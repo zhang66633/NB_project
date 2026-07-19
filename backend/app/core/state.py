@@ -1,0 +1,83 @@
+"""AgentState — 所有智能体共享的状态定义。"""
+
+from typing import Annotated, List, Literal, Optional
+from typing_extensions import TypedDict
+
+from langgraph.graph.message import add_messages
+from langchain_core.messages import BaseMessage
+
+
+class AgentState(TypedDict):
+    """LangGraph 共享状态，所有节点读写此 State。"""
+
+    # --- 消息 ---
+    messages: Annotated[List[BaseMessage], add_messages]
+
+    # --- 模式 ---
+    mode: Literal["teach", "execute"]
+    session_id: str
+
+    # --- 问题理解 ---
+    problem_raw: str
+    problem_type: str
+    problem_complexity: Literal["simple", "composite", "innovative"]
+    data_dependency: Literal["theoretical", "given_data", "self_collect"]
+
+    # --- 知识库上下文 ---
+    kb_methods: List[dict]
+    kb_papers: List[dict]
+    kb_templates: List[dict]
+
+    # --- 动态执行计划 ---
+    execution_plan: List[str]       # 例如: ["analysis", "modeling", "solving", "verification", "writing"]
+    current_step_index: int
+    retry_count: int
+    max_retries: int
+
+    # --- 各 Agent 输出 ---
+    analysis_output: Optional[str]
+    model_output: Optional[str]
+    solving_output: Optional[str]
+    verification_output: Optional[str]
+    writing_output: Optional[str]
+
+    # --- 回退控制 ---
+    verification_passed: Optional[bool]
+    verification_feedback: Optional[str]
+    rollback_target: Optional[str]
+
+    # --- 最终输出 ---
+    final_response: Optional[str]
+
+
+def create_initial_state(
+    problem_raw: str,
+    mode: Literal["teach", "execute"] = "execute",
+    session_id: str = "default",
+) -> AgentState:
+    """创建初始状态，填好默认值。"""
+    return AgentState(
+        messages=[],
+        mode=mode,
+        session_id=session_id,
+        problem_raw=problem_raw,
+        problem_type="",
+        problem_complexity="simple",
+        data_dependency="theoretical",
+        kb_methods=[],
+        kb_papers=[],
+        kb_templates=[],
+        execution_plan=[],
+        current_step_index=-1,
+        retry_count=0,
+        max_retries=3,
+        analysis_output=None,
+        model_output=None,
+        solving_output=None,
+        verification_output=None,
+        writing_output=None,
+        verification_passed=None,
+        verification_feedback=None,
+        rollback_target=None,
+        final_response=None,
+    )

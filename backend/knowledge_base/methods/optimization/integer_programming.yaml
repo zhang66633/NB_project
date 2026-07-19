@@ -1,0 +1,32 @@
+method_card:
+  id: "mc_002"
+  name: "整数规划 (Integer Programming)"
+  category: ["optimization", "数学规划"]
+  principle: |
+    整数规划是线性规划的扩展，要求部分或全部决策变量取整数值。
+    主要分为纯整数规划、混合整数规划(MIP)和0-1规划。
+    常用解法：分支定界法(Branch and Bound)、割平面法、隐枚举法。
+    对于大规模MIP，现代求解器（Gurobi/CPLEX）结合启发式可高效求解。
+  applicable_when:
+    - "决策变量表示不可分割的实体（人员/车辆/设备数量）"
+    - "需要做是非决策（0-1变量）"
+    - "逻辑约束需要整数变量表达（if-then/要么-要么）"
+  typical_scenarios:
+    - "设施选址问题"
+    - "车辆路径问题(VRP)"
+    - "背包问题及其变体"
+    - "生产排程问题"
+  code_snippets:
+    - language: "python"
+      description: "使用 pulp 库求解整数规划"
+      code: |
+        from pulp import LpProblem, LpMaximize, LpVariable, lpSum, LpInteger
+
+        prob = LpProblem("IP_Example", LpMaximize)
+        x1 = LpVariable("x1", 0, None, LpInteger)
+        x2 = LpVariable("x2", 0, None, LpInteger)
+        prob += 40 * x1 + 30 * x2  # 目标
+        prob += x1 + 2 * x2 <= 8   # 约束
+        prob += 3 * x1 + x2 <= 10
+        prob.solve()
+  related_cards: ["mc_001"]

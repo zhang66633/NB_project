@@ -1,0 +1,38 @@
+paper:
+  id: "paper_2023C_01"
+  year: 2023
+  competition: "国赛"
+  problem_id: "C"
+  title: "蔬菜类商品的自动定价与补货决策"
+
+  tags:
+    problem_type: ["optimization", "预测", "评价"]
+    core_models: ["线性回归", "ARIMA时间序列", "多目标规划"]
+    techniques: ["数据预处理", "相关性分析", "销量预测", "定价优化"]
+
+  analysis:
+    problem_summary: "基于历史销售数据，建立蔬菜品类的销量预测模型和定价优化模型，支持商超的自动定价与补货决策"
+    key_assumptions:
+      - "历史销售数据能反映市场需求规律"
+      - "蔬菜损耗率与时间呈正相关"
+      - "售价与销量之间存在可量化的关系"
+    decision_variables: "各蔬菜品类的日定价和补货量"
+    objective: "最大化商超总收益（销售收入 - 进货成本 - 损耗成本）"
+    constraints: "货架容量限制、保鲜期限制、市场可接受价格区间"
+
+  model:
+    approach: "采用两阶段建模：第一阶段用ARIMA预测各品类日销量，第二阶段建立多目标优化模型确定最优定价和补货量"
+    innovation: "将损耗率建模为时间的函数融入成本计算，使模型更贴近实际运营"
+    solution_method: "使用Python scipy.optimize求解多目标规划，通过加权求和转化为单目标"
+
+  evaluation:
+    strengths:
+      - "两阶段建模逻辑清晰，可解释性强"
+      - "考虑了损耗率的时间依赖性，更贴近实际"
+    weaknesses:
+      - "未考虑节假日等特殊时段的销量波动"
+      - "定价与销量关系简化为线性，实际可能更复杂"
+    lessons: "实际问题中，数据预处理和特征工程往往比模型本身更重要；损耗成本在生鲜品类中不可忽略"
+
+  source: "2023年全国大学生数学建模竞赛C题优秀论文"
+  quality_rating: 4

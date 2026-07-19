@@ -1,0 +1,21 @@
+method_card:
+  id: "mc_007"
+  name: "动态规划 (Dynamic Programming)"
+  category: ["optimization", "数学规划"]
+  principle: |
+    将复杂问题分解为相互关联的子问题，利用最优子结构性质，
+    通过存储子问题解（记忆化）避免重复计算。核心是 Bellman 最优性原理。
+    适用于多阶段决策过程，需要满足无后效性和最优子结构性质。
+  formulas:
+    - name: "Bellman 方程"
+      latex: "f_k(s_k) = \\min_{x_k \\in D_k(s_k)} \\{v_k(s_k, x_k) + f_{k+1}(s_{k+1})\\}"
+      description: "第k阶段状态s_k的最优值 = 当前决策收益 + 后续阶段最优值"
+  applicable_when:
+    - "问题可以划分为顺序的阶段"
+    - "满足最优子结构性质"
+    - "阶段之间有无后效性"
+  typical_scenarios:
+    - "最短路径问题"
+    - "背包问题"
+    - "资源分配问题"
+    - "生产与库存控制"

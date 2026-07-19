@@ -1,0 +1,20 @@
+method_card:
+  id: "mc_006"
+  name: "模拟退火算法 (Simulated Annealing)"
+  category: ["optimization", "启发式算法", "元启发式"]
+  principle: |
+    受固体退火过程启发：高温时分子活跃（全局搜索），降温时趋于稳定（局部优化）。
+    以一定概率接受比当前解更差的解（Metropolis准则），从而跳出局部最优。
+    温度T越高接受差解的概率越大，随降温逐渐收敛。
+  formulas:
+    - name: "Metropolis 接受准则"
+      latex: "P(\\Delta E) = e^{-\\Delta E / T}"
+      description: "ΔE为新解与当前解的能量差(目标函数差)，T为当前温度"
+  applicable_when:
+    - "问题有多个局部最优，容易陷入"
+    - "搜索空间大且不连续"
+    - "TSP、VLSI设计等组合优化问题"
+  common_mistakes:
+    - mistake: "降温太快导致未充分搜索"
+      solution: "使用对数降温或指数降温但保证初始温度足够高"
+  related_cards: ["mc_003"]

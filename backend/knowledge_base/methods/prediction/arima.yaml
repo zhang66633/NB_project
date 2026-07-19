@@ -1,0 +1,24 @@
+method_card:
+  id: "mc_004"
+  name: "ARIMA 时间序列预测"
+  category: ["prediction", "时间序列", "统计方法"]
+  principle: |
+    ARIMA(p,d,q) = AutoRegressive Integrated Moving Average。
+    p: 自回归阶数, d: 差分阶数（使序列平稳）, q: 移动平均阶数。
+    通过历史值的线性组合预测未来值，适用于平稳或有趋势的时间序列。
+  applicable_when:
+    - "数据为等间隔时间序列"
+    - "时序具有一定的自相关性"
+    - "短期预测（中长期预测效果较差）"
+  not_applicable_when:
+    - "数据有明显的季节性但未处理（应使用SARIMA）"
+    - "外部因素主导变化（应考虑ARIMAX或多元模型）"
+  code_snippets:
+    - language: "python"
+      description: "使用 statsmodels 拟合 ARIMA"
+      code: |
+        from statsmodels.tsa.arima.model import ARIMA
+        model = ARIMA(data, order=(p, d, q))
+        fitted = model.fit()
+        forecast = fitted.forecast(steps=10)
+  related_cards: ["mc_005"]

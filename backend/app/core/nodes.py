@@ -1,0 +1,531 @@
+"""图节点函数 — classify / retrieve / plan / agent stubs / format。"""
+
+import json
+import re
+from pathlib import Path
+from typing import List
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from app.config import get_settings
+from app.core.state import AgentState
+from app.knowledge.loader import KnowledgeBaseLoader
+from app.knowledge.retriever import HybridRetriever
+from app.sandbox.executor import SandboxExecutor
+
+from .llm.factory import get_llm
+from .prompts.classifier import CLASSIFIER_SYSTEM_PROMPT, CLASSIFIER_USER_TEMPLATE
+from .prompts.planner import PLANNER_SYSTEM_PROMPT, PLANNER_USER_TEMPLATE
+from .prompts.analysis import ANALYSIS_SYSTEM_PROMPT, ANALYSIS_USER_TEMPLATE
+from .prompts.modeling import MODELING_SYSTEM_PROMPT, MODELING_USER_TEMPLATE
+from .prompts.solving import SOLVING_SYSTEM_PROMPT, SOLVING_USER_TEMPLATE
+from .prompts.verification import VERIFICATION_SYSTEM_PROMPT, VERIFICATION_USER_TEMPLATE
+from .prompts.writing import WRITING_SYSTEM_PROMPT, WRITING_USER_TEMPLATE
+
+
+# ============================================================
+# 节点 1: 问题分类
+# ============================================================
+def classify_problem(state: AgentState) -> dict:
+    """识别问题类型、复杂度、数据依赖。"""
+    llm = get_llm("classifier")
+    prompt = CLASSIFIER_USER_TEMPLATE.format(problem=state["problem_raw"])
+
+    response = llm.invoke([
+        SystemMessage(content=CLASSIFIER_SYSTEM_PROMPT),
+        HumanMessage(content=prompt),
+    ])
+
+    # 解析 JSON 输出
+    result = _extract_json(str(response.content))
+
+    return {
+        "problem_type": result.get("problem_type", ""),
+        "problem_complexity": result.get("problem_complexity", "simple"),
+        "data_dependency": result.get("data_dependency", "theoretical"),
+        "messages": [
+            SystemMessage(
+                content=f"分类结果: 类型={result.get('problem_type')}, "
+                        f"复杂度={result.get('problem_complexity')}, "
+                        f"摘要={result.get('summary', '')}"
+            )
+        ],
+    }
+
+
+# ============================================================
+# 节点 2: 知识库检索
+# ============================================================
+def retrieve_knowledge(state: AgentState) -> dict:
+    """从三层知识库检索相关内容。"""
+    settings = get_settings()
+
+    loader = KnowledgeBaseLoader(settings.kb_root)
+
+    methods: List[dict] = []
+    papers: List[dict] = []
+    templates: List[dict] = []
+
+    problem_type = state["problem_type"]
+
+    if problem_type:
+        # 标签过滤 — 精确匹配
+        for card in loader.get_methods_by_category(problem_type):
+            methods.append({
+                "id": card.id,
+                "name": card.name,
+                "principle": card.principle[:300],
+                "category": card.category,
+            })
+
+        for paper in loader.get_papers_by_type(problem_type):
+            papers.append({
+                "id": paper.id,
+                "title": paper.title,
+                "year": paper.year,
+                "competition": paper.competition,
+                "approach": paper.model.approach,
+            })
+
+        for tpl in loader.get_templates_for_type(problem_type):
+            templates.append({
+                "id": tpl.id,
+                "name": tpl.name,
+                "applicable_to": tpl.applicable_to,
+            })
+
+    # 如果没有标签匹配，尝试语义搜索
+    if not methods:
+        try:
+            retriever = HybridRetriever(
+                kb_root=settings.kb_root,
+                persist_dir=settings.chroma_dir,
+            )
+            docs = retriever.invoke(state["problem_raw"], k=5)
+            for doc in docs:
+                meta = doc.metadata
+                if meta.get("type") == "method_card":
+                    methods.append({"id": meta.get("id"), "name": meta.get("name")})
+                elif meta.get("type") == "paper":
+                    papers.append({"id": meta.get("id"), "title": doc.page_content[:100]})
+                elif meta.get("type") == "template":
+                    templates.append({"id": meta.get("id"), "name": meta.get("name")})
+        except Exception:
+            pass  # 向量库未初始化时优雅降级
+
+    return {
+        "kb_methods": methods,
+        "kb_papers": papers,
+        "kb_templates": templates,
+        "messages": [
+            SystemMessage(
+                content=f"知识库检索: 找到 {len(methods)} 个方法, "
+                        f"{len(papers)} 篇论文, {len(templates)} 个模板"
+            )
+        ],
+    }
+
+
+# ============================================================
+# 节点 3: 执行规划
+# ============================================================
+def plan_execution(state: AgentState) -> dict:
+    """根据分类和知识库，动态生成子 agent 执行计划。"""
+    llm = get_llm("planner")
+
+    # 构建知识库上下文
+    methods_str = "\n".join(
+        f"- {m['name']}: {m.get('principle', '')[:100]}" for m in state["kb_methods"]
+    ) or "（无推荐的特定方法）"
+
+    templates_str = "\n".join(
+        f"- {t['name']}" for t in state["kb_templates"]
+    ) or "（无匹配模板）"
+
+    papers_str = "\n".join(
+        f"- [{p['year']}] {p['title']}" for p in state["kb_papers"]
+    ) or "（无参考论文）"
+
+    system_prompt = PLANNER_SYSTEM_PROMPT.format(
+        methods=methods_str,
+        templates=templates_str,
+        papers=papers_str,
+    )
+
+    user_prompt = PLANNER_USER_TEMPLATE.format(
+        problem=state["problem_raw"],
+        problem_type=state["problem_type"],
+        complexity=state["problem_complexity"],
+        data_dependency=state["data_dependency"],
+    )
+
+    response = llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt),
+    ])
+
+    plan = _extract_json(str(response.content))
+
+    # 确保返回的是字符串列表
+    if isinstance(plan, list) and all(isinstance(x, str) for x in plan):
+        execution_plan: List[str] = plan
+    else:
+        # 默认计划
+        execution_plan = ["analysis", "modeling", "solving", "verification", "writing"]
+
+    return {
+        "execution_plan": execution_plan,
+        "current_step_index": -1,
+        "messages": [
+            SystemMessage(
+                content=f"执行计划: {' → '.join(execution_plan)}"
+            )
+        ],
+    }
+
+
+# ============================================================
+# Agent Stub 节点
+# 每个 agent 节点必须递增 current_step_index，否则会死循环
+# ============================================================
+def _next_step(state: AgentState) -> int:
+    """获取当前步骤索引并递增。"""
+    return state.get("current_step_index", -1) + 1
+
+
+def analysis_agent_node(state: AgentState) -> dict:
+    """问题分析 Agent — 用 LLM 深度分析问题结构。"""
+    idx = _next_step(state)
+    llm = get_llm("analysis")
+
+    # 构建知识库上下文
+    methods_str = "\n".join(
+        f"- **{m['name']}**: {m.get('principle', '')[:200]}"
+        for m in state["kb_methods"][:5]
+    ) or "（无推荐方法）"
+
+    templates_str = "\n".join(
+        f"- {t['name']}（适用于: {', '.join(t.get('applicable_to', []))}）"
+        for t in state["kb_templates"][:3]
+    ) or "（无匹配模板）"
+
+    system_prompt = ANALYSIS_SYSTEM_PROMPT.format(
+        methods=methods_str,
+        templates=templates_str,
+    )
+    user_prompt = ANALYSIS_USER_TEMPLATE.format(
+        problem=state["problem_raw"],
+        problem_type=state["problem_type"],
+    )
+
+    response = llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt),
+    ])
+
+    analysis_output = str(response.content)
+
+    return {
+        "analysis_output": analysis_output,
+        "current_step_index": idx,
+        "messages": [
+            SystemMessage(
+                content=f"[分析Agent] 第{idx+1}步完成，"
+                        f"输出 {len(analysis_output)} 字"
+            )
+        ],
+    }
+
+
+def modeling_agent_node(state: AgentState) -> dict:
+    """模型构建 Agent — 基于分析结果建立数学模型。"""
+    idx = _next_step(state)
+    llm = get_llm("modeling")
+
+    # 构建知识库上下文
+    methods_str = "\n".join(
+        f"- **{m['name']}**: {m.get('principle', '')[:200]}"
+        for m in state["kb_methods"]
+    ) or "（无推荐方法）"
+
+    templates_str = "\n".join(
+        f"- {t['name']}"
+        for t in state["kb_templates"]
+    ) or "（无匹配模板）"
+
+    system_prompt = MODELING_SYSTEM_PROMPT.format(
+        methods=methods_str,
+        templates=templates_str,
+    )
+    user_prompt = MODELING_USER_TEMPLATE.format(
+        problem=state["problem_raw"],
+        analysis=state.get("analysis_output", "无分析结果"),
+        problem_type=state["problem_type"],
+    )
+
+    response = llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt),
+    ])
+
+    model_output = str(response.content)
+
+    return {
+        "model_output": model_output,
+        "current_step_index": idx,
+        "messages": [
+            SystemMessage(
+                content=f"[建模Agent] 第{idx+1}步完成，"
+                        f"输出 {len(model_output)} 字"
+            )
+        ],
+    }
+
+
+def solving_agent_node(state: AgentState) -> dict:
+    """求解计算 Agent — 生成代码、沙箱执行、错误修正、图表输出。"""
+    idx = _next_step(state)
+    llm = get_llm("solving")
+    sandbox = SandboxExecutor()
+
+    model_text = state.get("model_output") or "无模型"
+
+    system_prompt = SOLVING_SYSTEM_PROMPT.format(model_info=model_text[:3000])
+    user_prompt = SOLVING_USER_TEMPLATE.format(
+        problem=state["problem_raw"],
+        model=model_text[:3000],
+    )
+
+    # 最多重试 2 次
+    max_attempts = 2
+    all_images: list[str] = []
+    final_output = ""
+
+    for attempt in range(max_attempts + 1):
+        # 第一次调用 LLM，重试时附加错误信息
+        if attempt == 0:
+            prompt = user_prompt
+        else:
+            prompt = (
+                f"{user_prompt}\n\n"
+                f"【重要】上次代码执行失败，请修正：\n"
+                f"错误信息：\n```\n{last_error[:1000]}\n```\n"
+                f"请修复代码并重新输出完整的求解方案。"
+            )
+
+        response = llm.invoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=prompt),
+        ])
+
+        full_text = str(response.content)
+
+        # 提取代码块
+        code = _extract_code_block(full_text)
+        if not code:
+            final_output = full_text
+            break
+
+        # 沙箱执行
+        exec_result = sandbox.run(code)
+
+        if exec_result["success"]:
+            # 成功 — 拼接完整输出
+            images = exec_result.get("images", [])
+            all_images = images
+            final_output = (
+                f"{full_text}\n\n"
+                f"### 执行结果\n```\n{exec_result['stdout'][:2000]}\n```\n"
+            )
+            if images:
+                final_output += f"\n生成图表: {len(images)} 张\n"
+            break
+        else:
+            last_error = exec_result.get("stderr", "")
+            if attempt < max_attempts:
+                print(f"[求解Agent] 第{attempt+1}次执行失败，重试中...")
+            else:
+                final_output = (
+                    f"{full_text}\n\n"
+                    f"### 执行失败（已重试{max_attempts}次）\n"
+                    f"```\n{last_error[:1000]}\n```"
+                )
+
+    return {
+        "solving_output": final_output,
+        "current_step_index": idx,
+        "messages": [
+            SystemMessage(
+                content=f"[求解Agent] 第{idx+1}步完成，"
+                        f"图表 {len(all_images)} 张，"
+                        f"输出 {len(final_output)} 字"
+            )
+        ],
+    }
+
+
+def _extract_code_block(text: str) -> str:
+    """从 LLM 输出中提取 Python 代码块。"""
+    import re
+    match = re.search(r"```(?:python)?\s*\n(.*?)```", text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    # 如果没有代码块标记，返回空（避免执行非代码内容）
+    return ""
+
+
+def verification_agent_node(state: AgentState) -> dict:
+    """验证分析 Agent — 检验模型+结果，判定通过或回退。"""
+    idx = _next_step(state)
+    llm = get_llm("verification")
+
+    system_prompt = VERIFICATION_SYSTEM_PROMPT
+    user_prompt = VERIFICATION_USER_TEMPLATE.format(
+        problem=state["problem_raw"],
+        analysis=state.get("analysis_output", "无")[:2000],
+        model=state.get("model_output", "无")[:2000],
+        solving=state.get("solving_output", "无")[:2000],
+    )
+
+    response = llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt),
+    ])
+
+    full_text = str(response.content)
+
+    # 解析判定结果
+    passed = "FAIL" not in full_text.upper().split("判定")[-1][:50] if "判定" in full_text else True
+
+    # 检查是否有明确的 FAIL 标记
+    if "FAIL" in full_text or "不通过" in full_text:
+        passed = False
+
+    # 确定回退目标
+    rollback = "modeling"
+    if "回退目标" in full_text:
+        if "solving" in full_text.lower():
+            rollback = "solving"
+    elif "求解" in full_text and "不正确" in full_text:
+        rollback = "solving"
+
+    # 如果有代码块，尝试执行灵敏度分析
+    code = _extract_code_block(full_text)
+    if code and passed:
+        try:
+            sandbox = SandboxExecutor()
+            exec_result = sandbox.run(code)
+            if exec_result["success"]:
+                full_text += f"\n\n### 灵敏度分析执行结果\n```\n{exec_result['stdout'][:2000]}\n```\n"
+        except Exception:
+            pass
+
+    return {
+        "verification_passed": passed,
+        "verification_output": full_text,
+        "verification_feedback": full_text[:500] if not passed else None,
+        "rollback_target": rollback if not passed else None,
+        "retry_count": state.get("retry_count", 0) + (0 if passed else 1),
+        "current_step_index": idx,
+        "messages": [
+            SystemMessage(
+                content=f"[验证Agent] 第{idx+1}步完成 — "
+                        f"{'✅ 通过' if passed else '❌ 不通过，回退到 ' + rollback}"
+            )
+        ],
+    }
+
+
+def writing_agent_node(state: AgentState) -> dict:
+    """论文写作 Agent — 整合全流程输出为竞赛论文。"""
+    idx = _next_step(state)
+    llm = get_llm("writing")
+
+    system_prompt = WRITING_SYSTEM_PROMPT.format(
+        analysis=state.get("analysis_output", "无")[:3000],
+        model=state.get("model_output", "无")[:3000],
+        solving=state.get("solving_output", "无")[:3000],
+        verification=state.get("verification_output", "无")[:3000],
+    )
+    user_prompt = WRITING_USER_TEMPLATE.format(problem=state["problem_raw"])
+
+    response = llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt),
+    ])
+
+    writing_output = str(response.content)
+
+    # 清理 Markdown 代码块标记
+    import re
+    writing_output = re.sub(r"^```(?:latex|tex)?\s*\n", "", writing_output)
+    writing_output = re.sub(r"\n```\s*$", "", writing_output)
+
+    return {
+        "writing_output": writing_output,
+        "current_step_index": idx,
+        "messages": [
+            SystemMessage(
+                content=f"[写作Agent] 第{idx+1}步完成，"
+                        f"论文 {len(writing_output)} 字"
+            )
+        ],
+    }
+
+
+# ============================================================
+# 节点: 格式化输出
+# ============================================================
+def format_response(state: AgentState) -> dict:
+    """整合所有 agent 输出，按模式格式化。"""
+    if state["mode"] == "teach":
+        final = "（教学模式 — 引导式对话待实现）"
+    else:
+        parts = []
+        if state.get("analysis_output"):
+            parts.append(state["analysis_output"])
+        if state.get("model_output"):
+            parts.append(state["model_output"])
+        if state.get("solving_output"):
+            parts.append(state["solving_output"])
+        if state.get("verification_output"):
+            parts.append(state["verification_output"])
+        if state.get("writing_output"):
+            parts.append(state["writing_output"])
+        final = "\n\n---\n\n".join(parts) if parts else "（无输出）"
+
+    return {
+        "final_response": final,
+        "messages": [SystemMessage(content="编排完成，最终结果已生成。")],
+    }
+
+
+# ============================================================
+# 工具函数
+# ============================================================
+def _extract_json(text: str) -> dict | list:
+    """从 LLM 输出中提取 JSON。"""
+    # 尝试直接解析
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # 尝试提取 ```json ... ``` 代码块
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # 尝试提取 { } 或 [ ]
+    for pattern in [r"\{[\s\S]*\}", r"\[[\s\S]*\]"]:
+        match = re.search(pattern, text)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                continue
+
+    return {}

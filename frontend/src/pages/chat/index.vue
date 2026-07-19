@@ -186,13 +186,30 @@ function startConversation() {
 
 function handleUserSend(text: string) {
   if (!currentTaskId.value) return;
+  const taskId = currentTaskId.value;
   const userMsg: Message = {
     id: generateId(),
     msg_type: "user",
     content: text,
     created_at: new Date().toISOString(),
   };
-  taskStore.appendMessage(currentTaskId.value, userMsg);
+  taskStore.appendMessage(taskId, userMsg);
+
+  // 模拟智能体回复（后端就绪后替换为 WebSocket）
+  taskStore.isRunning = true;
+  setTimeout(() => {
+    const agentMsg: Message = {
+      id: generateId(),
+      msg_type: "agent",
+      content:
+        currentMode.value === "teach"
+          ? "🤔 **好的，让我们一起来思考这个问题。**\n\n首先，你能说说这个问题的**决策变量**是什么吗？换句话说，我们需要决定哪些量？\n\n> 提示：仔细分析题目中哪些因素的取值是可以由我们控制的。"
+          : "📋 **收到，我将为你分析这个建模问题。**\n\n## 问题理解\n\n正在分析问题结构，识别关键要素...\n\n### 核心要素\n- **决策变量**: 需要从问题中提取可控制的量\n- **目标函数**: 明确优化方向（最大化/最小化）\n- **约束条件**: 识别所有限制条件\n\n> 💡 这是模拟回复。后端就绪后将通过 WebSocket 实时推送 5 个智能体的协同输出。",
+      created_at: new Date().toISOString(),
+    };
+    taskStore.appendMessage(taskId, agentMsg);
+    taskStore.isRunning = false;
+  }, 800);
 }
 
 onMounted(() => {

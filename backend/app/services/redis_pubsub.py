@@ -21,6 +21,57 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# ── FakeRedis fallback (when Redis server is not available) ──────────
+_FAKEREDIS_AVAILABLE = False
+_fake_server = None
+
+try:
+    import fakeredis
+    import fakeredis.aioredis as fake_aioredis
+    _FAKEREDIS_AVAILABLE = True
+except ImportError:
+    pass
+
+
+def _get_fake_server():
+    """Get or create a shared FakeServer so pub/sub works across clients."""
+    global _fake_server
+    if _fake_server is None and _FAKEREDIS_AVAILABLE:
+        _fake_server = fakeredis.FakeServer()
+    return _fake_server
+
+
+def _create_sync_client(redis_url: str):
+    """Create a sync Redis client, falling back to fakeredis if needed."""
+    try:
+        client = sync_redis.Redis.from_url(redis_url, decode_responses=True)
+        client.ping()
+        logger.info("Connected to real Redis at %s", redis_url)
+        return client
+    except Exception:
+        if _FAKEREDIS_AVAILABLE:
+            logger.info("Redis unavailable — using fakeredis (in-memory)")
+            return fakeredis.FakeRedis(
+                server=_get_fake_server(), decode_responses=True
+            )
+        raise
+
+
+async def _create_async_client(redis_url: str):
+    """Create an async Redis client, falling back to fakeredis if needed."""
+    try:
+        client = aioredis.Redis.from_url(redis_url, decode_responses=True)
+        await client.ping()
+        logger.info("Connected to real Redis (async) at %s", redis_url)
+        return client
+    except Exception:
+        if _FAKEREDIS_AVAILABLE:
+            logger.info("Redis unavailable — using fakeredis (in-memory, async)")
+            return fake_aioredis.FakeRedis(
+                server=_get_fake_server(), decode_responses=True
+            )
+        raise
+
 # ── Event types ──────────────────────────────────────────────────────
 
 
@@ -79,9 +130,7 @@ class RedisPublisher:
     @property
     def client(self) -> sync_redis.Redis:
         if self._client is None:
-            self._client = sync_redis.Redis.from_url(
-                self.redis_url, decode_responses=True
-            )
+            self._client = _create_sync_client(self.redis_url)
         return self._client
 
     def publish(self, task_id: str, event: str, node: str, data: Optional[dict] = None) -> int:
@@ -138,9 +187,7 @@ class RedisSubscriber:
     async def subscribe(self, task_id: str) -> AsyncGenerator[str, None]:
         """Subscribe to a task channel and yield event JSON strings."""
         try:
-            client = aioredis.Redis.from_url(
-                self.redis_url, decode_responses=True
-            )
+            client = await _create_async_client(self.redis_url)
             pubsub = client.pubsub()
             channel = ProgressEvent.channel_for(task_id)
 

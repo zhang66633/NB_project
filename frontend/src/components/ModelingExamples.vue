@@ -31,7 +31,7 @@
         v-for="example in filteredExamples"
         :key="example.id"
         class="group cursor-pointer rounded-xl border bg-card p-4 transition-all hover:shadow-md hover:border-primary/30"
-        @click="$router.push(`/example/${example.id}`)"
+        @click="$emit('select', example)"
       >
         <div class="flex items-start justify-between gap-2">
           <h4 class="font-medium text-sm group-hover:text-primary transition-colors line-clamp-2">
@@ -87,12 +87,13 @@ interface Example {
   competition: string;
 }
 
-defineProps<{
+const props = defineProps<{
   examples: Example[];
 }>();
 
 defineEmits<{
   filter: [category: string];
+  select: [example: Example];
 }>();
 
 const categories = [
@@ -116,8 +117,25 @@ const searchQuery = ref("");
 const filterCategory = ref("");
 
 const filteredExamples = computed(() => {
-  // In a real implementation, filtering would be done against the examples prop
-  return [];
+  let result = props.examples;
+  if (activeFilter.value) {
+    const catMap: Record<string, string> = {
+      optimization: "优化问题",
+      prediction: "预测问题",
+      evaluation: "评价问题",
+      graph: "图论问题",
+    };
+    result = result.filter(
+      (e) => e.category === (catMap[activeFilter.value] || activeFilter.value)
+    );
+  }
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase();
+    result = result.filter(
+      (e) => e.title.toLowerCase().includes(q) || e.description.toLowerCase().includes(q)
+    );
+  }
+  return result;
 });
 
 function onSearch(query: string) {

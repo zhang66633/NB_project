@@ -54,6 +54,7 @@
       <div v-else class="flex justify-center">
         <div
           class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary font-medium text-sm cursor-pointer"
+          @click="router.push('/login')"
         >
           U
         </div>
@@ -63,21 +64,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import {
   Home,
   MessageSquare,
   FolderOpen,
+  Library,
   BookOpen,
-  Settings,
   Sigma,
 } from "lucide-vue-next";
 import { APP_NAME } from "@/utils/const";
 import NavUser from "@/components/NavUser.vue";
 import VersionSwitcher from "@/components/VersionSwitcher.vue";
 
-const props = withDefaults(defineProps<{
+withDefaults(defineProps<{
   collapsed?: boolean;
 }>(), {
   collapsed: false,
@@ -90,13 +90,17 @@ const navItems = [
   { label: "首页", path: "/", icon: Home },
   { label: "对话", path: "/chat", icon: MessageSquare },
   { label: "任务", path: "/task/0", icon: FolderOpen },
-  { label: "例题", path: "/example/0", icon: BookOpen },
-  { label: "设置", path: "/settings", icon: Settings },
+  { label: "知识库", path: "/knowledge", icon: Library },
+  { label: "例题", path: "/example/1", icon: BookOpen },
 ];
 
 function isActive(path: string): boolean {
   if (path === "/") return route.path === "/";
-  return route.path.startsWith(path.split("/")[0] === "" ? "/" : `/${path.split("/")[1]}`);
+  if (route.path.startsWith("/chat")) return path.startsWith("/chat");
+  if (route.path.startsWith("/task")) return path.startsWith("/task");
+  if (route.path.startsWith("/knowledge")) return path.startsWith("/knowledge");
+  if (route.path.startsWith("/example")) return path.startsWith("/example");
+  return false;
 }
 
 function navigate(path: string) {
@@ -104,6 +108,8 @@ function navigate(path: string) {
 }
 
 function handleUserAction(action: string) {
-  console.log("User action:", action);
+  if (action === "logout") {
+    router.push("/");
+  }
 }
 </script>

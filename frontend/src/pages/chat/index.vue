@@ -1,9 +1,7 @@
 <template>
   <div class="flex h-screen bg-background">
-    <!-- Sidebar -->
     <AppSidebar :collapsed="sidebarCollapsed" />
 
-    <!-- Main content -->
     <div class="flex flex-1 flex-col min-w-0">
       <!-- Top bar -->
       <header class="flex h-14 items-center justify-between border-b px-4 gap-3">
@@ -15,7 +13,7 @@
             <PanelLeft class="h-4 w-4" />
           </button>
 
-          <div v-if="activeTaskId" class="flex items-center gap-2">
+          <div v-if="hasStarted" class="flex items-center gap-2">
             <h2 class="text-sm font-semibold truncate max-w-[200px]">
               {{ taskTitle || '建模任务' }}
             </h2>
@@ -32,7 +30,7 @@
         <div class="flex items-center gap-3">
           <ServiceStatus />
           <button
-            v-if="rightPanelOpen !== undefined"
+            v-if="hasStarted"
             class="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-accent transition-colors"
             @click="rightPanelOpen = !rightPanelOpen"
           >
@@ -41,23 +39,26 @@
         </div>
       </header>
 
-      <!-- Welcome screen (no active task) -->
-      <div v-if="!activeTaskId" class="flex-1 flex items-center justify-center">
+      <!-- Welcome screen -->
+      <div v-if="!hasStarted" class="flex-1 flex items-center justify-center">
         <div class="w-full max-w-2xl px-6 text-center">
           <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 mx-auto mb-6">
             <MessageSquare class="h-8 w-8 text-primary" />
           </div>
-          <h2 class="text-2xl font-bold mb-2">开始建模对话</h2>
+          <h2 class="text-2xl font-bold mb-2">
+            {{ welcomeMode === 'teach' ? '教学模式' : '方案输出模式' }}
+          </h2>
           <p class="text-muted-foreground mb-8">
-            输入你的数学建模问题，智能体将开始协同工作
+            {{ welcomeMode === 'teach' ? '苏格拉底式引导，逐步培养建模思维' : '结构化输出完整建模方案' }}
           </p>
 
           <div class="rounded-2xl border bg-card p-6 shadow-sm">
             <textarea
               v-model="welcomeProblem"
               rows="4"
-              placeholder="描述你的建模问题..."
+              placeholder="描述你的建模问题（选填，进入后可继续输入）..."
               class="w-full resize-none rounded-xl border border-input bg-background px-4 py-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              @keydown.ctrl.enter="startConversation"
             />
             <div class="flex items-center justify-between mt-3">
               <div class="flex items-center gap-2">
@@ -74,12 +75,11 @@
                 </button>
               </div>
               <button
-                class="inline-flex items-center justify-center rounded-xl bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-                :disabled="!welcomeProblem.trim()"
-                @click="startNewTask"
+                class="inline-flex items-center justify-center rounded-xl bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                @click="startConversation"
               >
-                <Send class="h-4 w-4 mr-1.5" />
-                开始
+                <MessageSquare class="h-4 w-4 mr-1.5" />
+                进入对话
               </button>
             </div>
           </div>
@@ -88,12 +88,10 @@
 
       <!-- Chat + Right Panel -->
       <div v-else class="flex flex-1 min-h-0">
-        <!-- Chat area -->
         <div class="flex-1 min-w-0 relative">
-          <ChatArea :task-id="activeTaskId" />
+          <ChatArea :task-id="currentTaskId" @send="handleUserSend" />
         </div>
 
-        <!-- Right panel -->
         <Transition name="slide-right">
           <div
             v-if="rightPanelOpen"
@@ -117,12 +115,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import {
   PanelLeft,
   PanelRight,
   MessageSquare,
-  Send,
 } from "lucide-vue-next";
 import AppSidebar from "@/components/AppSidebar.vue";
 import ServiceStatus from "@/components/ServiceStatus.vue";
@@ -130,9 +127,9 @@ import ChatArea from "@/components/ChatArea.vue";
 import UserStepper from "@/components/UserStepper.vue";
 import NotebookArea from "@/components/NotebookArea.vue";
 import { useTaskStore } from "@/stores/task";
+import type { Message } from "@/utils/response";
 
 const route = useRoute();
-const router = useRouter();
 const taskStore = useTaskStore();
 
 const sidebarCollapsed = ref(false);
@@ -140,15 +137,15 @@ const rightPanelOpen = ref(true);
 
 const welcomeProblem = ref("");
 const welcomeMode = ref<"teach" | "execute">("teach");
+const hasStarted = ref(false);
+const currentTaskId = ref("");
+const currentMode = ref<"teach" | "execute">("teach");
+const taskTitle = ref("");
 
 const modeOptions = [
   { label: "教学模式", value: "teach" as const },
   { label: "方案输出", value: "execute" as const },
 ];
-
-const activeTaskId = computed(() => taskStore.currentTaskId);
-const taskTitle = ref("");
-const currentMode = ref<"teach" | "execute">("teach");
 
 const agentSteps = ref([
   { id: "1", label: "问题分析", status: "wait" as const, description: "理解题意，提取关键信息" },
@@ -160,23 +157,47 @@ const agentSteps = ref([
 
 const notebookCells = ref<Array<{ cell_type: string; source?: string }>>([]);
 
-function startNewTask() {
-  if (!welcomeProblem.value.trim()) return;
-  const mode = welcomeMode.value;
-  // Set up the chat context and navigate
-  router.push({
-    path: "/chat",
-    query: { problem: welcomeProblem.value, mode },
-  });
+function generateId() {
+  return `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function startConversation() {
+  const taskId = generateId();
+  currentTaskId.value = taskId;
+  currentMode.value = welcomeMode.value;
+  hasStarted.value = true;
+  taskTitle.value = welcomeProblem.value.trim()
+    ? welcomeProblem.value.slice(0, 30) + "..."
+    : "新对话";
+
+  taskStore.setCurrentTask(taskId);
+
+  // If there's a problem, add it as the first user message
+  if (welcomeProblem.value.trim()) {
+    const userMsg: Message = {
+      id: generateId(),
+      msg_type: "user",
+      content: welcomeProblem.value.trim(),
+      created_at: new Date().toISOString(),
+    };
+    taskStore.appendMessage(taskId, userMsg);
+  }
+}
+
+function handleUserSend(text: string) {
+  if (!currentTaskId.value) return;
+  const userMsg: Message = {
+    id: generateId(),
+    msg_type: "user",
+    content: text,
+    created_at: new Date().toISOString(),
+  };
+  taskStore.appendMessage(currentTaskId.value, userMsg);
 }
 
 onMounted(() => {
-  const problem = route.query.problem as string;
   const mode = (route.query.mode as string) || "teach";
-  if (problem) {
-    welcomeProblem.value = problem;
-    welcomeMode.value = mode as "teach" | "execute";
-  }
+  welcomeMode.value = mode as "teach" | "execute";
 });
 </script>
 

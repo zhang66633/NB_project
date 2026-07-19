@@ -1,6 +1,82 @@
-"""RAG-aware prompt templates for knowledge-augmented agent responses."""
+"""RAG-aware prompt templates for knowledge-augmented agent responses.
+
+Also provides shared instruction fragments used across all agent prompts.
+"""
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+
+# ── Shared instruction fragments ────────────────────────────────────
+
+CITATION_RULES = """## 引用规范
+
+- 引用知识库方法卡片时标注: `[mc_xxx]`（如 [mc_001]）
+- 引用真题论文时标注: `[paper_xxx]`（如 [paper_2023C_01]）
+- 引用分析框架时标注: `[tpl_xxx]`（如 [tpl_001]）
+- 如果知识库上下文不足以覆盖当前问题，基于领域知识补充说明"""
+
+MARKDOWN_RULES = """## 输出格式规范
+
+- 数学公式使用 LaTeX 语法: 行内 `$...$`，块级 `$$...$$`
+- 表格使用 Markdown 标准格式
+- 代码使用 ``` 围栏标记，指定语言类型
+- 层次结构清晰，使用 ## ### #### 标题"""
+
+TEACH_SHARED_RULES = """## 教学模式通用规则
+
+1. **绝不直接给出完整答案** — 用引导式提问激发思考
+2. **分步引导** — 每次聚焦一个要点
+3. **正向鼓励** — 先肯定进步，再指出改进方向
+4. **实例类比** — 用学生熟悉的场景解释抽象概念
+5. **自检清单** — 引导学生建立自我检验的习惯"""
+
+AGENT_ROLE_NAMES = {
+    "classifier": "问题分类器",
+    "planner": "执行规划器",
+    "analysis": "问题分析专家",
+    "modeling": "模型构建专家",
+    "solving": "求解计算专家",
+    "verification": "验证分析专家",
+    "writing": "论文写作专家",
+}
+
+
+def build_agent_system_prompt(
+    agent_role: str,
+    core_instructions: str,
+    kb_context: str = "",
+    mode: str = "execute",
+) -> str:
+    """构建统一的 agent system prompt。
+
+    Args:
+        agent_role:         Agent 角色名（如 "analysis"）
+        core_instructions:  Agent 特定的核心指令
+        kb_context:         知识库上下文字符串（可选）
+        mode:               模式 "teach" 或 "execute"
+
+    Returns:
+        组合后的完整 system prompt 字符串
+    """
+    role_name = AGENT_ROLE_NAMES.get(agent_role, agent_role)
+    parts = [f"# {role_name}\n"]
+
+    if mode == "teach":
+        parts.append(TEACH_SHARED_RULES)
+        parts.append("")
+
+    parts.append(core_instructions)
+    parts.append("")
+
+    if kb_context:
+        parts.append(kb_context)
+        parts.append("")
+
+    parts.append(CITATION_RULES)
+    parts.append("")
+    parts.append(MARKDOWN_RULES)
+
+    return "\n".join(parts)
 
 # ── General RAG context prompt (used across agents) ────────────────────
 

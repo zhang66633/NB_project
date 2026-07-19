@@ -6,6 +6,7 @@
       <button
         class="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium hover:bg-accent transition-colors"
         title="运行全部"
+        @click="emit('runAll')"
       >
         <Play class="h-3.5 w-3.5" />
         <span class="hidden sm:inline">运行全部</span>
@@ -13,6 +14,7 @@
       <button
         class="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium hover:bg-accent transition-colors"
         title="清除输出"
+        @click="emit('clearOutputs')"
       >
         <Trash2 class="h-3.5 w-3.5" />
         <span class="hidden sm:inline">清除输出</span>
@@ -20,6 +22,7 @@
       <button
         class="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium hover:bg-accent transition-colors"
         title="下载"
+        @click="emit('download')"
       >
         <Download class="h-3.5 w-3.5" />
       </button>
@@ -35,6 +38,7 @@
           :source="cell.source"
           :execution-count="cell.execution_count"
           :outputs="cell.outputs"
+          @run="emit('runCell', idx)"
         />
       </template>
 
@@ -61,5 +65,12 @@ interface NotebookCellData {
 
 defineProps<{
   cells?: NotebookCellData[];
+}>();
+
+const emit = defineEmits<{
+  runAll: [];
+  runCell: [index: number];
+  clearOutputs: [];
+  download: [];
 }>();
 </script>

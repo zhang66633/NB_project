@@ -1,7 +1,8 @@
-"""图节点函数 — classify / retrieve / plan / agent stubs / format。"""
+"""图节点函数 — classify / retrieve / plan / agent / format。"""
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import List
 
@@ -12,15 +13,52 @@ from app.core.state import AgentState
 from app.knowledge.loader import KnowledgeBaseLoader
 from app.knowledge.retriever import HybridRetriever
 from app.sandbox.executor import SandboxExecutor
+from app.services.redis_pubsub import get_publisher
 
 from .llm.factory import get_llm
 from .prompts.classifier import CLASSIFIER_SYSTEM_PROMPT, CLASSIFIER_USER_TEMPLATE
 from .prompts.planner import PLANNER_SYSTEM_PROMPT, PLANNER_USER_TEMPLATE
-from .prompts.analysis import ANALYSIS_SYSTEM_PROMPT, ANALYSIS_USER_TEMPLATE
-from .prompts.modeling import MODELING_SYSTEM_PROMPT, MODELING_USER_TEMPLATE
-from .prompts.solving import SOLVING_SYSTEM_PROMPT, SOLVING_USER_TEMPLATE
-from .prompts.verification import VERIFICATION_SYSTEM_PROMPT, VERIFICATION_USER_TEMPLATE
-from .prompts.writing import WRITING_SYSTEM_PROMPT, WRITING_USER_TEMPLATE
+from .prompts.analysis import (
+    ANALYSIS_SYSTEM_PROMPT, ANALYSIS_USER_TEMPLATE,
+    ANALYSIS_TEACH_SYSTEM_PROMPT, ANALYSIS_TEACH_USER_TEMPLATE,
+)
+from .prompts.modeling import (
+    MODELING_SYSTEM_PROMPT, MODELING_USER_TEMPLATE,
+    MODELING_TEACH_SYSTEM_PROMPT, MODELING_TEACH_USER_TEMPLATE,
+)
+from .prompts.solving import (
+    SOLVING_SYSTEM_PROMPT, SOLVING_USER_TEMPLATE,
+    SOLVING_TEACH_SYSTEM_PROMPT, SOLVING_TEACH_USER_TEMPLATE,
+)
+from .prompts.verification import (
+    VERIFICATION_SYSTEM_PROMPT, VERIFICATION_USER_TEMPLATE,
+    VERIFICATION_TEACH_SYSTEM_PROMPT, VERIFICATION_TEACH_USER_TEMPLATE,
+)
+from .prompts.writing import (
+    WRITING_SYSTEM_PROMPT, WRITING_USER_TEMPLATE,
+    WRITING_TEACH_SYSTEM_PROMPT, WRITING_TEACH_USER_TEMPLATE,
+)
+
+
+# ── helper: publish node progress ────────────────────────────────────
+
+
+def _pub_event(task_id: str, event: str, node: str, data: dict | None = None):
+    """Fire-and-forget publish a progress event to Redis."""
+    try:
+        return get_publisher().publish(task_id, event, node, data)
+    except Exception:
+        pass  # best-effort; never block the workflow on publish failures
+
+
+def _is_cancelled(task_id: str) -> bool:
+    """Check if the task has been cancelled."""
+    try:
+        from app.services.session import get_session_manager
+        event = get_session_manager().get_cancel_event(task_id)
+        return event.is_set()
+    except Exception:
+        return False
 
 
 # ============================================================
@@ -28,6 +66,9 @@ from .prompts.writing import WRITING_SYSTEM_PROMPT, WRITING_USER_TEMPLATE
 # ============================================================
 def classify_problem(state: AgentState) -> dict:
     """识别问题类型、复杂度、数据依赖。"""
+    task_id = state["session_id"]
+    _pub_event(task_id, "node_start", "classify")
+
     llm = get_llm("classifier")
     prompt = CLASSIFIER_USER_TEMPLATE.format(problem=state["problem_raw"])
 
@@ -38,6 +79,12 @@ def classify_problem(state: AgentState) -> dict:
 
     # 解析 JSON 输出
     result = _extract_json(str(response.content))
+
+    _pub_event(task_id, "node_end", "classify", {
+        "problem_type": result.get("problem_type", ""),
+        "problem_complexity": result.get("problem_complexity", "simple"),
+        "summary": result.get("summary", ""),
+    })
 
     return {
         "problem_type": result.get("problem_type", ""),
@@ -58,6 +105,8 @@ def classify_problem(state: AgentState) -> dict:
 # ============================================================
 def retrieve_knowledge(state: AgentState) -> dict:
     """从三层知识库检索相关内容。"""
+    task_id = state["session_id"]
+    _pub_event(task_id, "node_start", "retrieve_knowledge")
     settings = get_settings()
 
     loader = KnowledgeBaseLoader(settings.kb_root)
@@ -113,6 +162,12 @@ def retrieve_knowledge(state: AgentState) -> dict:
         except Exception:
             pass  # 向量库未初始化时优雅降级
 
+    _pub_event(task_id, "node_end", "retrieve_knowledge", {
+        "methods_count": len(methods),
+        "papers_count": len(papers),
+        "templates_count": len(templates),
+    })
+
     return {
         "kb_methods": methods,
         "kb_papers": papers,
@@ -131,6 +186,8 @@ def retrieve_knowledge(state: AgentState) -> dict:
 # ============================================================
 def plan_execution(state: AgentState) -> dict:
     """根据分类和知识库，动态生成子 agent 执行计划。"""
+    task_id = state["session_id"]
+    _pub_event(task_id, "node_start", "plan_execution")
     llm = get_llm("planner")
 
     # 构建知识库上下文
@@ -185,8 +242,7 @@ def plan_execution(state: AgentState) -> dict:
 
 
 # ============================================================
-# Agent Stub 节点
-# 每个 agent 节点必须递增 current_step_index，否则会死循环
+# Agent 节点 — 每个 agent 节点递增 current_step_index
 # ============================================================
 def _next_step(state: AgentState) -> int:
     """获取当前步骤索引并递增。"""
@@ -196,6 +252,8 @@ def _next_step(state: AgentState) -> int:
 def analysis_agent_node(state: AgentState) -> dict:
     """问题分析 Agent — 用 LLM 深度分析问题结构。"""
     idx = _next_step(state)
+    task_id = state["session_id"]
+    _pub_event(task_id, "node_start", "analysis_agent", {"step": idx + 1})
     llm = get_llm("analysis")
 
     # 构建知识库上下文
@@ -209,14 +267,24 @@ def analysis_agent_node(state: AgentState) -> dict:
         for t in state["kb_templates"][:3]
     ) or "（无匹配模板）"
 
-    system_prompt = ANALYSIS_SYSTEM_PROMPT.format(
-        methods=methods_str,
-        templates=templates_str,
-    )
-    user_prompt = ANALYSIS_USER_TEMPLATE.format(
-        problem=state["problem_raw"],
-        problem_type=state["problem_type"],
-    )
+    if state["mode"] == "teach":
+        system_prompt = ANALYSIS_TEACH_SYSTEM_PROMPT.format(
+            methods=methods_str,
+            templates=templates_str,
+        )
+        user_prompt = ANALYSIS_TEACH_USER_TEMPLATE.format(
+            problem=state["problem_raw"],
+            problem_type=state["problem_type"],
+        )
+    else:
+        system_prompt = ANALYSIS_SYSTEM_PROMPT.format(
+            methods=methods_str,
+            templates=templates_str,
+        )
+        user_prompt = ANALYSIS_USER_TEMPLATE.format(
+            problem=state["problem_raw"],
+            problem_type=state["problem_type"],
+        )
 
     response = llm.invoke([
         SystemMessage(content=system_prompt),
@@ -224,6 +292,11 @@ def analysis_agent_node(state: AgentState) -> dict:
     ])
 
     analysis_output = str(response.content)
+
+    _pub_event(task_id, "node_end", "analysis_agent", {
+        "step": idx + 1,
+        "output_length": len(analysis_output),
+    })
 
     return {
         "analysis_output": analysis_output,
@@ -240,6 +313,8 @@ def analysis_agent_node(state: AgentState) -> dict:
 def modeling_agent_node(state: AgentState) -> dict:
     """模型构建 Agent — 基于分析结果建立数学模型。"""
     idx = _next_step(state)
+    task_id = state["session_id"]
+    _pub_event(task_id, "node_start", "modeling_agent", {"step": idx + 1})
     llm = get_llm("modeling")
 
     # 构建知识库上下文
@@ -253,15 +328,26 @@ def modeling_agent_node(state: AgentState) -> dict:
         for t in state["kb_templates"]
     ) or "（无匹配模板）"
 
-    system_prompt = MODELING_SYSTEM_PROMPT.format(
-        methods=methods_str,
-        templates=templates_str,
-    )
-    user_prompt = MODELING_USER_TEMPLATE.format(
-        problem=state["problem_raw"],
-        analysis=state.get("analysis_output", "无分析结果"),
-        problem_type=state["problem_type"],
-    )
+    if state["mode"] == "teach":
+        system_prompt = MODELING_TEACH_SYSTEM_PROMPT.format(
+            methods=methods_str,
+            templates=templates_str,
+        )
+        user_prompt = MODELING_TEACH_USER_TEMPLATE.format(
+            problem=state["problem_raw"],
+            analysis=state.get("analysis_output", "无分析结果"),
+            problem_type=state["problem_type"],
+        )
+    else:
+        system_prompt = MODELING_SYSTEM_PROMPT.format(
+            methods=methods_str,
+            templates=templates_str,
+        )
+        user_prompt = MODELING_USER_TEMPLATE.format(
+            problem=state["problem_raw"],
+            analysis=state.get("analysis_output", "无分析结果"),
+            problem_type=state["problem_type"],
+        )
 
     response = llm.invoke([
         SystemMessage(content=system_prompt),
@@ -269,6 +355,11 @@ def modeling_agent_node(state: AgentState) -> dict:
     ])
 
     model_output = str(response.content)
+
+    _pub_event(task_id, "node_end", "modeling_agent", {
+        "step": idx + 1,
+        "output_length": len(model_output),
+    })
 
     return {
         "model_output": model_output,
@@ -285,16 +376,25 @@ def modeling_agent_node(state: AgentState) -> dict:
 def solving_agent_node(state: AgentState) -> dict:
     """求解计算 Agent — 生成代码、沙箱执行、错误修正、图表输出。"""
     idx = _next_step(state)
+    task_id = state["session_id"]
+    _pub_event(task_id, "node_start", "solving_agent", {"step": idx + 1})
     llm = get_llm("solving")
     sandbox = SandboxExecutor()
 
     model_text = state.get("model_output") or "无模型"
 
-    system_prompt = SOLVING_SYSTEM_PROMPT.format(model_info=model_text[:3000])
-    user_prompt = SOLVING_USER_TEMPLATE.format(
-        problem=state["problem_raw"],
-        model=model_text[:3000],
-    )
+    if state["mode"] == "teach":
+        system_prompt = SOLVING_TEACH_SYSTEM_PROMPT.format(model_info=model_text[:3000])
+        user_prompt = SOLVING_TEACH_USER_TEMPLATE.format(
+            problem=state["problem_raw"],
+            model=model_text[:3000],
+        )
+    else:
+        system_prompt = SOLVING_SYSTEM_PROMPT.format(model_info=model_text[:3000])
+        user_prompt = SOLVING_USER_TEMPLATE.format(
+            problem=state["problem_raw"],
+            model=model_text[:3000],
+        )
 
     # 最多重试 2 次
     max_attempts = 2
@@ -351,6 +451,12 @@ def solving_agent_node(state: AgentState) -> dict:
                     f"```\n{last_error[:1000]}\n```"
                 )
 
+    _pub_event(task_id, "node_end", "solving_agent", {
+        "step": idx + 1,
+        "output_length": len(final_output),
+        "images_count": len(all_images),
+    })
+
     return {
         "solving_output": final_output,
         "current_step_index": idx,
@@ -377,15 +483,26 @@ def _extract_code_block(text: str) -> str:
 def verification_agent_node(state: AgentState) -> dict:
     """验证分析 Agent — 检验模型+结果，判定通过或回退。"""
     idx = _next_step(state)
+    task_id = state["session_id"]
+    _pub_event(task_id, "node_start", "verification_agent", {"step": idx + 1})
     llm = get_llm("verification")
 
-    system_prompt = VERIFICATION_SYSTEM_PROMPT
-    user_prompt = VERIFICATION_USER_TEMPLATE.format(
-        problem=state["problem_raw"],
-        analysis=state.get("analysis_output", "无")[:2000],
-        model=state.get("model_output", "无")[:2000],
-        solving=state.get("solving_output", "无")[:2000],
-    )
+    if state["mode"] == "teach":
+        system_prompt = VERIFICATION_TEACH_SYSTEM_PROMPT
+        user_prompt = VERIFICATION_TEACH_USER_TEMPLATE.format(
+            problem=state["problem_raw"],
+            analysis=state.get("analysis_output", "无")[:2000],
+            model=state.get("model_output", "无")[:2000],
+            solving=state.get("solving_output", "无")[:2000],
+        )
+    else:
+        system_prompt = VERIFICATION_SYSTEM_PROMPT
+        user_prompt = VERIFICATION_USER_TEMPLATE.format(
+            problem=state["problem_raw"],
+            analysis=state.get("analysis_output", "无")[:2000],
+            model=state.get("model_output", "无")[:2000],
+            solving=state.get("solving_output", "无")[:2000],
+        )
 
     response = llm.invoke([
         SystemMessage(content=system_prompt),
@@ -420,6 +537,12 @@ def verification_agent_node(state: AgentState) -> dict:
         except Exception:
             pass
 
+    _pub_event(task_id, "node_end", "verification_agent", {
+        "step": idx + 1,
+        "passed": passed,
+        "rollback_target": rollback if not passed else None,
+    })
+
     return {
         "verification_passed": passed,
         "verification_output": full_text,
@@ -439,15 +562,26 @@ def verification_agent_node(state: AgentState) -> dict:
 def writing_agent_node(state: AgentState) -> dict:
     """论文写作 Agent — 整合全流程输出为竞赛论文。"""
     idx = _next_step(state)
+    task_id = state["session_id"]
+    _pub_event(task_id, "node_start", "writing_agent", {"step": idx + 1})
     llm = get_llm("writing")
 
-    system_prompt = WRITING_SYSTEM_PROMPT.format(
-        analysis=state.get("analysis_output", "无")[:3000],
-        model=state.get("model_output", "无")[:3000],
-        solving=state.get("solving_output", "无")[:3000],
-        verification=state.get("verification_output", "无")[:3000],
-    )
-    user_prompt = WRITING_USER_TEMPLATE.format(problem=state["problem_raw"])
+    if state["mode"] == "teach":
+        system_prompt = WRITING_TEACH_SYSTEM_PROMPT.format(
+            analysis=state.get("analysis_output", "无")[:3000],
+            model=state.get("model_output", "无")[:3000],
+            solving=state.get("solving_output", "无")[:3000],
+            verification=state.get("verification_output", "无")[:3000],
+        )
+        user_prompt = WRITING_TEACH_USER_TEMPLATE.format(problem=state["problem_raw"])
+    else:
+        system_prompt = WRITING_SYSTEM_PROMPT.format(
+            analysis=state.get("analysis_output", "无")[:3000],
+            model=state.get("model_output", "无")[:3000],
+            solving=state.get("solving_output", "无")[:3000],
+            verification=state.get("verification_output", "无")[:3000],
+        )
+        user_prompt = WRITING_USER_TEMPLATE.format(problem=state["problem_raw"])
 
     response = llm.invoke([
         SystemMessage(content=system_prompt),
@@ -460,6 +594,11 @@ def writing_agent_node(state: AgentState) -> dict:
     import re
     writing_output = re.sub(r"^```(?:latex|tex)?\s*\n", "", writing_output)
     writing_output = re.sub(r"\n```\s*$", "", writing_output)
+
+    _pub_event(task_id, "node_end", "writing_agent", {
+        "step": idx + 1,
+        "output_length": len(writing_output),
+    })
 
     return {
         "writing_output": writing_output,
@@ -478,26 +617,74 @@ def writing_agent_node(state: AgentState) -> dict:
 # ============================================================
 def format_response(state: AgentState) -> dict:
     """整合所有 agent 输出，按模式格式化。"""
+    task_id = state["session_id"]
+    _pub_event(task_id, "node_start", "format_response")
+
     if state["mode"] == "teach":
-        final = "（教学模式 — 引导式对话待实现）"
+        final = _format_teach_response(state)
     else:
-        parts = []
-        if state.get("analysis_output"):
-            parts.append(state["analysis_output"])
-        if state.get("model_output"):
-            parts.append(state["model_output"])
-        if state.get("solving_output"):
-            parts.append(state["solving_output"])
-        if state.get("verification_output"):
-            parts.append(state["verification_output"])
-        if state.get("writing_output"):
-            parts.append(state["writing_output"])
-        final = "\n\n---\n\n".join(parts) if parts else "（无输出）"
+        final = _format_execute_response(state)
+
+    _pub_event(task_id, "node_end", "format_response", {
+        "mode": state["mode"],
+        "output_length": len(final),
+    })
 
     return {
         "final_response": final,
         "messages": [SystemMessage(content="编排完成，最终结果已生成。")],
     }
+
+
+def _format_execute_response(state: AgentState) -> str:
+    """方案输出模式: 拼接所有 agent 输出。"""
+    parts = []
+    if state.get("analysis_output"):
+        parts.append(state["analysis_output"])
+    if state.get("model_output"):
+        parts.append(state["model_output"])
+    if state.get("solving_output"):
+        parts.append(state["solving_output"])
+    if state.get("verification_output"):
+        parts.append(state["verification_output"])
+    if state.get("writing_output"):
+        parts.append(state["writing_output"])
+    return "\n\n---\n\n".join(parts) if parts else "（无输出）"
+
+
+def _format_teach_response(state: AgentState) -> str:
+    """教学模式: 整合为苏格拉底式引导对话。"""
+    parts = ["## 🎓 教学模式 — 引导式分析\n"]
+
+    if state.get("analysis_output"):
+        parts.append("### 💡 问题思考引导\n")
+        parts.append(state["analysis_output"])
+        parts.append("")
+
+    if state.get("model_output"):
+        parts.append("### 🧩 模型思路启发\n")
+        parts.append(state["model_output"])
+        parts.append("")
+
+    if state.get("solving_output"):
+        parts.append("### 🔧 求解方向提示\n")
+        parts.append(state["solving_output"])
+        parts.append("")
+
+    if state.get("verification_output"):
+        parts.append("### ✅ 自检清单\n")
+        parts.append(state["verification_output"])
+        parts.append("")
+
+    if state.get("writing_output"):
+        parts.append("### 📝 框架建议\n")
+        parts.append(state["writing_output"])
+        parts.append("")
+
+    if len(parts) <= 1:
+        return "（教学模式 — 引导式对话待实现）"
+
+    return "\n".join(parts)
 
 
 # ============================================================

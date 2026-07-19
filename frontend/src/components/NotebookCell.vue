@@ -13,6 +13,7 @@
           v-if="cell_type === 'code'"
           class="flex items-center gap-1 rounded px-2 py-0.5 text-xs hover:bg-accent transition-colors"
           title="运行"
+          @click="emit('run')"
         >
           <Play class="h-3 w-3" />
           <span>运行</span>
@@ -117,6 +118,10 @@ const props = defineProps<{
   source?: string;
   executionCount?: number;
   outputs?: Array<Record<string, unknown>>;
+}>();
+
+const emit = defineEmits<{
+  run: [];
 }>();
 
 const cellTypeLabel = computed(() => {

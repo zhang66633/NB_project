@@ -395,21 +395,46 @@ async def kb_reindex(
 @knowledge_router.post("/upload")
 async def upload_knowledge(
     background_tasks: BackgroundTasks,
-    text: str = Form(..., description="原始文本内容"),
+    text: str = Form("", description="原始文本内容（与 file 二选一）"),
+    file: Optional[UploadFile] = File(None, description="上传文件（.txt/.md/.pdf 等，与 text 二选一）"),
     kb_type: str = Form(..., description="method / paper / template"),
     name: str = Form("", description="名称提示"),
 ):
-    """上传原始文本，LLM 自动提取结构化知识，保存 YAML 并增量索引。
+    """上传原始文本或文件，LLM 自动提取结构化知识，保存 YAML 并增量索引。
 
-    返回 job_id，前端轮询 GET /knowledge/jobs/{job_id} 获取结果。
+    - text 和 file 至少提供一个
+    - 如果提供 file，读取其内容作为文本
+    - 返回 job_id，前端轮询 GET /knowledge/jobs/{job_id} 获取结果
     """
     if kb_type not in ("method", "paper", "template"):
         raise HTTPException(status_code=400, detail="kb_type 必须为 method / paper / template")
 
+    # Resolve text content
+    raw_text = text.strip()
+    if file:
+        try:
+            content = await file.read()
+            # Try UTF-8 first, fallback to other encodings
+            for enc in ("utf-8", "gbk", "gb2312", "latin-1"):
+                try:
+                    raw_text = content.decode(enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            else:
+                raw_text = content.decode("utf-8", errors="replace")
+            if not name and file.filename:
+                name = Path(file.filename).stem
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"文件读取失败: {e}")
+
+    if not raw_text:
+        raise HTTPException(status_code=400, detail="请提供文本内容或上传文件")
+
     job_id = str(uuid.uuid4())[:8]
     _extraction_jobs[job_id] = {"status": "processing", "result": None, "error": None}
 
-    background_tasks.add_task(_run_extraction, job_id, text, kb_type, name)
+    background_tasks.add_task(_run_extraction, job_id, raw_text, kb_type, name)
     return KnowledgeUploadJob(job_id=job_id, status="processing")
 
 

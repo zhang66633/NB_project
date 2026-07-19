@@ -1,128 +1,124 @@
 <template>
   <div class="min-h-screen flex">
     <!-- Left decorative panel -->
-    <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-600 via-blue-700 to-purple-800 items-center justify-center p-12">
+    <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-950 items-center justify-center p-12">
       <div class="max-w-md text-white">
         <div class="flex items-center gap-3 mb-8">
-          <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20">
-            <Sigma class="h-7 w-7" />
+          <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10">
+            <Github class="h-7 w-7" />
           </div>
           <div>
             <h2 class="text-2xl font-bold">{{ APP_NAME }}</h2>
-            <p class="text-blue-200 text-sm">数学建模多智能体辅助系统</p>
+            <p class="text-gray-400 text-sm">数学建模多智能体辅助系统</p>
           </div>
         </div>
-        <p class="text-lg text-blue-100 leading-relaxed">
-          基于 LangGraph 多智能体编排技术，为您提供从问题分析到论文写作的全流程数学建模辅助。
+        <p class="text-lg text-gray-300 leading-relaxed">
+          使用 GitHub 账号一键登录，无需额外注册。你的建模数据将安全地关联到你的 GitHub 账号。
         </p>
         <div class="mt-8 space-y-4">
           <div class="flex items-center gap-3">
             <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
-              <Brain class="h-4 w-4" />
+              <Shield class="h-4 w-4" />
             </div>
-            <span class="text-blue-100">5 个专业智能体协同工作</span>
+            <span class="text-gray-300">GitHub OAuth 安全授权</span>
           </div>
           <div class="flex items-center gap-3">
             <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
-              <MessagesSquare class="h-4 w-4" />
+              <Zap class="h-4 w-4" />
             </div>
-            <span class="text-blue-100">教学模式 & 方案输出双模式</span>
+            <span class="text-gray-300">一键登录，无需密码</span>
           </div>
           <div class="flex items-center gap-3">
             <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
-              <Code2 class="h-4 w-4" />
+              <Users class="h-4 w-4" />
             </div>
-            <span class="text-blue-100">代码生成 & 实时执行</span>
+            <span class="text-gray-300">开源社区驱动</span>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Right login form -->
-    <div class="flex flex-1 items-center justify-center px-6 py-12">
+    <!-- Right login panel -->
+    <div class="flex flex-1 items-center justify-center px-6 py-12 bg-background">
       <div class="w-full max-w-sm">
         <!-- Mobile logo -->
-        <div class="flex items-center gap-2 mb-8 lg:hidden">
+        <div class="flex items-center justify-center gap-2 mb-8 lg:hidden">
           <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Sigma class="h-5 w-5 text-primary-foreground" />
           </div>
           <span class="font-semibold">{{ APP_NAME }}</span>
         </div>
 
-        <div class="mb-8">
-          <h1 class="text-2xl font-bold">欢迎回来</h1>
-          <p class="text-sm text-muted-foreground mt-1">登录到你的账号继续建模</p>
+        <!-- GitHub icon -->
+        <div class="flex justify-center mb-6">
+          <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#24292e]">
+            <Github class="h-9 w-9 text-white" />
+          </div>
         </div>
 
-        <form class="space-y-4" @submit.prevent="handleLogin">
-          <div class="space-y-1.5">
-            <label class="text-sm font-medium" for="username">用户名 / 邮箱</label>
-            <div class="relative">
-              <User class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                id="username"
-                v-model="username"
-                type="text"
-                placeholder="name@example.com"
-                class="flex h-11 w-full rounded-lg border border-input bg-background pl-10 pr-4 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                autocomplete="username"
-              />
+        <div class="text-center mb-8">
+          <h1 class="text-2xl font-bold">登录 MathModelAgent</h1>
+          <p class="text-sm text-muted-foreground mt-2">
+            使用 GitHub 账号授权登录，即刻开始建模
+          </p>
+        </div>
+
+        <!-- GitHub login button -->
+        <button
+          class="flex h-12 w-full items-center justify-center gap-3 rounded-xl bg-[#24292e] text-sm font-medium text-white hover:bg-[#1b1f23] transition-colors disabled:opacity-50"
+          :disabled="loading"
+          @click="handleGithubLogin"
+        >
+          <Loader2 v-if="loading" class="h-5 w-5 animate-spin" />
+          <Github v-else class="h-5 w-5" />
+          {{ loading ? '正在跳转 GitHub 授权...' : '使用 GitHub 账号登录' }}
+        </button>
+
+        <!-- Divider -->
+        <div class="relative my-6">
+          <div class="absolute inset-0 flex items-center">
+            <span class="w-full border-t" />
+          </div>
+          <div class="relative flex justify-center text-xs uppercase">
+            <span class="bg-background px-2 text-muted-foreground">登录后你可以</span>
+          </div>
+        </div>
+
+        <!-- Feature list -->
+        <div class="space-y-3">
+          <div class="flex items-center gap-3 rounded-lg border p-3">
+            <MessageSquare class="h-5 w-5 text-primary shrink-0" />
+            <div>
+              <p class="text-sm font-medium">多智能体对话</p>
+              <p class="text-xs text-muted-foreground">5 个专业智能体协同解决建模问题</p>
             </div>
           </div>
-
-          <div class="space-y-1.5">
-            <div class="flex items-center justify-between">
-              <label class="text-sm font-medium" for="password">密码</label>
-              <a href="#" class="text-xs text-primary hover:underline">忘记密码?</a>
-            </div>
-            <div class="relative">
-              <Lock class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                id="password"
-                v-model="password"
-                :type="showPassword ? 'text' : 'password'"
-                placeholder="••••••••"
-                class="flex h-11 w-full rounded-lg border border-input bg-background pl-10 pr-10 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                autocomplete="current-password"
-              />
-              <button
-                type="button"
-                class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                @click="showPassword = !showPassword"
-              >
-                <Eye v-if="!showPassword" class="h-4 w-4" />
-                <EyeOff v-else class="h-4 w-4" />
-              </button>
+          <div class="flex items-center gap-3 rounded-lg border p-3">
+            <FolderOpen class="h-5 w-5 text-primary shrink-0" />
+            <div>
+              <p class="text-sm font-medium">任务管理</p>
+              <p class="text-xs text-muted-foreground">保存和管理你的建模任务历史</p>
             </div>
           </div>
-
-          <div class="flex items-center gap-2">
-            <input
-              id="remember"
-              v-model="rememberMe"
-              type="checkbox"
-              class="h-4 w-4 rounded border-input text-primary focus:ring-ring"
-            />
-            <label for="remember" class="text-sm text-muted-foreground">记住我</label>
+          <div class="flex items-center gap-3 rounded-lg border p-3">
+            <Download class="h-5 w-5 text-primary shrink-0" />
+            <div>
+              <p class="text-sm font-medium">论文导出</p>
+              <p class="text-xs text-muted-foreground">导出完整建模方案和论文</p>
+            </div>
           </div>
+        </div>
 
-          <button
-            type="submit"
-            class="flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-            :disabled="loading || !username.trim() || !password.trim()"
-          >
-            <Loader2 v-if="loading" class="h-4 w-4 mr-2 animate-spin" />
-            {{ loading ? '登录中...' : '登录' }}
-          </button>
-        </form>
-
-        <p class="mt-6 text-center text-sm text-muted-foreground">
-          还没有账号？
-          <a href="#" class="text-primary hover:underline font-medium">注册</a>
+        <!-- Terms -->
+        <p class="mt-8 text-center text-xs text-muted-foreground">
+          登录即表示你同意我们的
+          <a href="#" class="text-primary hover:underline">服务条款</a>
+          和
+          <a href="#" class="text-primary hover:underline">隐私政策</a>
         </p>
 
-        <!-- Back home link -->
-        <div class="mt-8 text-center">
+        <!-- Back home -->
+        <div class="mt-6 text-center">
           <router-link
             to="/"
             class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -138,35 +134,33 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { useRouter } from "vue-router";
 import {
+  Github,
+  Shield,
+  Zap,
+  Users,
   Sigma,
-  Brain,
-  MessagesSquare,
-  Code2,
-  User,
-  Lock,
-  Eye,
-  EyeOff,
+  MessageSquare,
+  FolderOpen,
+  Download,
   ArrowLeft,
   Loader2,
 } from "lucide-vue-next";
-import { APP_NAME } from "@/utils/const";
+import { APP_NAME, GITHUB_LINK } from "@/utils/const";
 
-const router = useRouter();
-
-const username = ref("");
-const password = ref("");
-const rememberMe = ref(false);
-const showPassword = ref(false);
 const loading = ref(false);
 
-async function handleLogin() {
-  if (!username.value.trim() || !password.value.trim()) return;
+function handleGithubLogin() {
   loading.value = true;
-  // Simulate login
-  await new Promise((r) => setTimeout(r, 1000));
-  loading.value = false;
-  router.push("/");
+  const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID || "";
+  if (!clientId) {
+    alert("请先在 .env.development 中配置 VITE_GITHUB_CLIENT_ID");
+    loading.value = false;
+    return;
+  }
+  const redirectUri = encodeURIComponent(window.location.origin + "/auth/callback");
+  const scope = "read:user user:email";
+  const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}`;
+  window.location.href = githubAuthUrl;
 }
 </script>

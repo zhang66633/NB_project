@@ -1,18 +1,19 @@
-"""LLMFactory — 按 agent 角色创建不同的 LLM 实例。"""
+"""LLMFactory — 按 agent 角色创建不同的 LLM 实例。
+
+Uses the provider abstraction layer for clean separation of
+API-specific instantiation logic.
+"""
 
 import os
 
-from langchain_openai import ChatOpenAI
 from langchain_core.language_models import BaseChatModel
 
 from app.config import get_settings
+from .providers import get_provider
 
 
 class LLMFactory:
     """为每个 agent 角色创建独立配置的 LLM 实例。"""
-
-    # DeepSeek 默认配置
-    DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
     @staticmethod
     def create(agent_role: str) -> BaseChatModel:
@@ -20,34 +21,22 @@ class LLMFactory:
 
         # 获取 agent 对应的模型名
         model_attr = f"{agent_role}_model"
-        model = getattr(settings, model_attr, "deepseek-chat")
+        model = getattr(settings, model_attr, None)
+
+        # 回退: 尝试从环境变量读取统一模型名
+        if not model:
+            model = os.getenv("DEFAULT_MODEL", "deepseek-chat")
 
         # 获取 API Key
         api_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
 
-        # 判断是否为 DeepSeek 模型
-        if "deepseek" in model.lower():
-            base_url = os.getenv("DEEPSEEK_BASE_URL", LLMFactory.DEEPSEEK_BASE_URL)
-            return ChatOpenAI(
-                model=model,
-                api_key=api_key,
-                base_url=base_url,
-                temperature=settings.default_temperature,
-                max_tokens=settings.default_max_tokens,
-            )
-
-        # Anthropic 模型
+        # If model looks Anthropic, use Anthropic key
         if "claude" in model.lower():
-            from langchain_anthropic import ChatAnthropic
-            return ChatAnthropic(
-                model=model,
-                api_key=os.getenv("ANTHROPIC_API_KEY", ""),
-                temperature=settings.default_temperature,
-                max_tokens=settings.default_max_tokens,
-            )
+            api_key = os.getenv("ANTHROPIC_API_KEY") or api_key
 
-        # 其他 OpenAI 兼容模型
-        return ChatOpenAI(
+        # 委托给 provider
+        provider = get_provider(model)
+        return provider.create(
             model=model,
             api_key=api_key,
             temperature=settings.default_temperature,

@@ -14,7 +14,12 @@ async def lifespan(app: FastAPI):
     """Application startup/shutdown events."""
     settings = get_settings()
     print(f"MathModelAgent backend starting on {settings.host}:{settings.port}")
+
     yield
+
+    # Clean up Redis publisher
+    from .services.redis_pubsub import shutdown_publisher
+    shutdown_publisher()
     print("MathModelAgent backend shutting down.")
 
 

@@ -88,6 +88,10 @@ import Bubble from "@/components/Bubble.vue";
 
 const taskStore = useTaskStore();
 
+const emit = defineEmits<{
+  send: [text: string];
+}>();
+
 const messages = computed(() => taskStore.messages);
 const isRunning = computed(() => taskStore.isRunning);
 const isConnecting = computed(() =>
@@ -114,7 +118,7 @@ function scrollToBottom() {
 function sendMessage() {
   const text = inputText.value.trim();
   if (!text || isRunning.value) return;
-  // TODO: send via API/WebSocket
+  emit("send", text);
   inputText.value = "";
   nextTick(() => {
     const el = textareaRef.value;

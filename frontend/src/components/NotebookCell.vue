@@ -1,32 +1,29 @@
 <template>
-  <div class="border rounded-lg overflow-hidden">
-    <!-- Cell Header -->
-    <div class="flex items-center justify-between bg-muted/50 px-3 py-1.5 border-b">
+  <div class="rounded-sm border border-border overflow-hidden bg-background">
+    <!-- Cell Header:等宽小标 + 细线 -->
+    <div class="flex items-center justify-between px-3 py-1.5 border-b border-border bg-muted/20">
       <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-muted-foreground">
-          {{ cellTypeLabel }}
-          <template v-if="executionCount !== undefined">[{{ executionCount }}]</template>
+        <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          {{ cellTypeLabel }}<template v-if="executionCount !== undefined">[{{ executionCount }}]</template>
         </span>
       </div>
-      <div class="flex items-center gap-1">
-        <button
-          v-if="cell_type === 'code'"
-          class="flex items-center gap-1 rounded px-2 py-0.5 text-xs hover:bg-accent transition-colors"
-          title="运行"
-          @click="emit('run')"
-        >
-          <Play class="h-3 w-3" />
-          <span>运行</span>
-        </button>
-      </div>
+      <button
+        v-if="cell_type === 'code'"
+        class="flex items-center gap-1 rounded-sm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        title="运行"
+        @click="emit('run')"
+      >
+        <Play class="h-3 w-3" />
+        <span>运行</span>
+      </button>
     </div>
 
     <!-- Cell Content -->
     <div class="p-3">
-      <!-- Code cell - source -->
+      <!-- Code cell -->
       <pre
         v-if="cell_type === 'code'"
-        class="text-sm font-mono overflow-x-auto"
+        class="text-xs font-mono overflow-x-auto leading-relaxed"
         v-html="highlightedCode"
       />
 
@@ -38,20 +35,20 @@
       />
 
       <!-- Raw cell -->
-      <pre v-else class="text-sm whitespace-pre-wrap">{{ source }}</pre>
+      <pre v-else class="text-xs font-mono whitespace-pre-wrap text-muted-foreground">{{ source }}</pre>
     </div>
 
-    <!-- Outputs -->
-    <div v-if="outputs && outputs.length > 0" class="border-t bg-muted/20">
+    <!-- Outputs:细线分隔,等宽 -->
+    <div v-if="outputs && outputs.length > 0" class="border-t border-border bg-muted/10">
       <div
         v-for="(output, idx) in outputs"
         :key="idx"
-        class="border-b last:border-b-0"
+        class="border-b border-border last:border-b-0"
       >
         <!-- Text output -->
         <pre
           v-if="output.type === 'text' || output.type === 'stream'"
-          class="text-xs p-3 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto"
+          class="text-xs p-3 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto leading-relaxed"
         >{{ output.text ?? output.content }}</pre>
 
         <!-- Image output -->
@@ -59,7 +56,7 @@
           <img
             v-if="output.data?.image_png || output.url"
             :src="output.url || `data:image/png;base64,${output.data?.image_png}`"
-            class="max-w-full rounded"
+            class="max-w-full rounded-sm border border-border"
             :alt="output.alt ?? '输出图片'"
           />
         </div>
@@ -71,7 +68,7 @@
           v-html="renderLatex(output.content ?? output.text ?? '')"
         />
 
-        <!-- Table output -->
+        <!-- Table output:细线表格 -->
         <div v-else-if="output.type === 'table'" class="p-3 overflow-x-auto">
           <table class="text-xs border-collapse">
             <thead>
@@ -79,7 +76,7 @@
                 <th
                   v-for="(h, hi) in (output.headers ?? [])"
                   :key="hi"
-                  class="border px-2 py-1 bg-muted font-medium text-left"
+                  class="border border-border px-2 py-1 font-mono font-medium text-left text-muted-foreground uppercase tracking-wider text-[10px]"
                 >{{ h }}</th>
               </tr>
             </thead>
@@ -88,17 +85,17 @@
                 <td
                   v-for="(cell, ci) in row"
                   :key="ci"
-                  class="border px-2 py-1"
+                  class="border border-border px-2 py-1 font-mono tabular-nums"
                 >{{ cell }}</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <!-- Error output -->
+        <!-- Error output:暖橙边框(去红底红字) -->
         <pre
           v-else-if="output.type === 'error'"
-          class="text-xs p-3 whitespace-pre-wrap font-mono text-red-600 bg-red-50 dark:bg-red-950/20"
+          class="text-xs p-3 whitespace-pre-wrap font-mono text-destructive border-l-2 border-destructive/40 bg-destructive/5 leading-relaxed"
         >{{ output.text ?? output.traceback?.join("\n") }}</pre>
       </div>
     </div>
@@ -111,7 +108,7 @@ import { Play } from "lucide-vue-next";
 import { marked } from "marked";
 import markedKatex from "marked-katex-extension";
 
-marked.use(markedKatex({ throwOnError: false }));
+marked.use(markedKatex({ throwOnError: false, nonStandard: true }));
 
 const props = defineProps<{
   cell_type: "code" | "markdown" | "raw";
@@ -126,15 +123,14 @@ const emit = defineEmits<{
 
 const cellTypeLabel = computed(() => {
   switch (props.cell_type) {
-    case "code": return "代码";
-    case "markdown": return "Markdown";
-    default: return "Raw";
+    case "code": return "code";
+    case "markdown": return "md";
+    default: return "raw";
   }
 });
 
 const highlightedCode = computed(() => {
   if (!props.source) return "";
-  // Simple escaping for display; highlight.js would be used here in production
   return escapeHtml(props.source);
 });
 

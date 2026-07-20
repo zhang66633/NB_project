@@ -1,12 +1,12 @@
 <template>
   <button
-    class="flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-accent transition-colors"
+    class="flex w-full items-center gap-2 rounded-sm border border-border px-3 py-2 text-sm hover:bg-accent/50 transition-colors"
     @click="open = !open"
   >
-    <FolderOpen class="h-4 w-4 text-muted-foreground shrink-0" />
-    <span class="flex-1 text-left truncate">{{ selected }}</span>
+    <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground shrink-0">· 版本</span>
+    <span class="flex-1 text-left truncate font-display text-xs">{{ selected }}</span>
     <ChevronDown
-      :class="['h-4 w-4 text-muted-foreground shrink-0 transition-transform', open && 'rotate-180']"
+      :class="['h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform', open && 'rotate-180']"
     />
   </button>
 
@@ -20,13 +20,13 @@
   >
     <div
       v-if="open"
-      class="absolute left-3 right-3 top-12 z-50 rounded-lg border bg-popover p-1 shadow-lg"
+      class="absolute left-3 right-3 top-12 z-50 rounded-sm border border-border bg-popover p-1 shadow-sm"
     >
       <button
         v-for="version in versions"
         :key="version"
-        class="flex w-full items-center rounded-md px-2 py-1.5 text-sm hover:bg-accent transition-colors"
-        :class="{ 'bg-accent': version === selected }"
+        class="flex w-full items-center rounded-sm px-2 py-1.5 text-xs hover:bg-accent transition-colors"
+        :class="version === selected ? 'bg-accent/60 font-medium' : 'text-muted-foreground'"
         @click="select(version)"
       >
         {{ version }}
@@ -37,7 +37,7 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { FolderOpen, ChevronDown } from "lucide-vue-next";
+import { ChevronDown } from "lucide-vue-next";
 
 const versions = ["MathModelAgent v0.1", "默认工作区"];
 

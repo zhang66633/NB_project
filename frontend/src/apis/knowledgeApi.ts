@@ -54,6 +54,14 @@ export interface PaperSummary {
 }
 
 export interface PaperDetail extends PaperSummary {
+  problem_context: string;
+  methodology_chain: string[];
+  key_formulas: { name: string; latex: string; description: string }[];
+  algorithm_outline: { language: string; description: string; code: string }[];
+  assumption_analysis: string[];
+  reusable_patterns: string[];
+  common_pitfalls: { mistake: string; solution: string }[];
+  difficulty_level: string;
   analysis: Record<string, unknown>;
   model: Record<string, unknown>;
   evaluation: Record<string, unknown>;
@@ -221,4 +229,16 @@ export function updateTemplate(tplId: string, data: Record<string, unknown>) {
 /** Delete template. */
 export function deleteTemplate(tplId: string) {
   return request.delete<CrudResponse>(`/knowledge/templates/${tplId}`);
+}
+
+// ── raw text (original material) ────────────────────────────────
+
+export function getMethodRaw(cardId: string) {
+  return request.get<{ entry_id: string; raw_text: string }>(`/knowledge/methods/${cardId}/raw`);
+}
+export function getPaperRaw(paperId: string) {
+  return request.get<{ entry_id: string; raw_text: string }>(`/knowledge/papers/${paperId}/raw`);
+}
+export function getTemplateRaw(tplId: string) {
+  return request.get<{ entry_id: string; raw_text: string }>(`/knowledge/templates/${tplId}/raw`);
 }

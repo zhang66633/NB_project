@@ -1,5 +1,16 @@
 <template>
   <div class="bg-grid-paper min-h-full">
+    <!-- Access denied banner -->
+    <div v-if="deniedMessage" class="mx-auto max-w-4xl px-6 sm:px-10 pt-4">
+      <div class="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3">
+        <ShieldAlert class="h-5 w-5 shrink-0 text-amber-600 mt-0.5" />
+        <p class="text-sm text-amber-800 flex-1">{{ deniedMessage }}</p>
+        <button class="shrink-0 text-amber-500 hover:text-amber-700 transition-colors" @click="dismissDenied">
+          <X class="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+
     <div class="mx-auto max-w-4xl px-6 sm:px-10">
 
       <!-- 标题区:大留白,衬线大标题 + italic 副标题,左对齐 -->
@@ -142,12 +153,19 @@ s.t.  Σᵢ xᵢⱼ = Dⱼ,  ∀j ∈ J
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { useRouter } from "vue-router";
-import { ArrowRight } from "lucide-vue-next";
+import { ref, onMounted, watch } from "vue";
+import { useRouter, useRoute } from "vue-router";
+import { ArrowRight, ShieldAlert, X } from "lucide-vue-next";
 import { getKBStats, type KBStats } from "@/apis/knowledgeApi";
 
 const router = useRouter();
+const route = useRoute();
+
+const deniedMessage = ref("");
+watch(() => route.query.denied, (val) => {
+  if (val === "knowledge") deniedMessage.value = "知识库仅对项目贡献者开放。请联系 zhang66633 或 shu639 获取权限。";
+}, { immediate: true });
+function dismissDenied() { deniedMessage.value = ""; router.replace({ query: {} }); }
 
 const statsReady = ref(false);
 

@@ -1,0 +1,104 @@
+import { ref, computed } from "vue";
+import { defineStore } from "pinia";
+import {
+  getAuthLogin,
+  getAuthCallback,
+  getAuthUser,
+  type UserInfo,
+} from "@/apis/authApi";
+
+const TOKEN_KEY = "mma:token";
+
+export const useAuthStore = defineStore("auth", () => {
+  const user = ref<UserInfo | null>(null);
+  const token = ref<string | null>(_loadToken());
+  const isContributor = ref(false);
+  const loading = ref(false);
+
+  const isLoggedIn = computed(() => !!token.value && !!user.value);
+  const displayName = computed(() => user.value?.login || user.value?.name || "游客");
+  const avatar = computed(() => user.value?.avatar_url || null);
+  const initials = computed(() => {
+    const name = displayName.value;
+    return name ? name.charAt(0).toUpperCase() : "U";
+  });
+
+  async function fetchLoginUrl(): Promise<string | null> {
+    try {
+      const data = await getAuthLogin();
+      return data.authorize_url;
+    } catch {
+      return null;
+    }
+  }
+
+  async function handleCallback(code: string): Promise<boolean> {
+    loading.value = true;
+    try {
+      const data = await getAuthCallback(code);
+      _setSession(data.access_token, data.user);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function checkSession(): Promise<boolean> {
+    if (!token.value) return false;
+    try {
+      const data = await getAuthUser();
+      if (data.authenticated && data.user) {
+        user.value = data.user;
+        isContributor.value = data.is_contributor;
+        return true;
+      }
+      return false;
+    } catch {
+      _clearSession();
+      return false;
+    }
+  }
+
+  function logout() {
+    _clearSession();
+  }
+
+  function _setSession(tok: string, u: UserInfo) {
+    token.value = tok;
+    user.value = u;
+    isContributor.value =
+      u.login?.toLowerCase() === "zhang66633" ||
+      u.login?.toLowerCase() === "shu639";
+    _saveToken(tok);
+  }
+
+  function _clearSession() {
+    token.value = null;
+    user.value = null;
+    isContributor.value = false;
+    _saveToken(null);
+  }
+
+  function _loadToken(): string | null {
+    try {
+      return localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  function _saveToken(tok: string | null) {
+    try {
+      if (tok) localStorage.setItem(TOKEN_KEY, tok);
+      else localStorage.removeItem(TOKEN_KEY);
+    } catch { /* ignore */ }
+  }
+
+  return {
+    user, token, isContributor, loading,
+    isLoggedIn, displayName, avatar, initials,
+    fetchLoginUrl, handleCallback, checkSession, logout,
+  };
+});

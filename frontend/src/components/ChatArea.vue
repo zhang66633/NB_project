@@ -84,17 +84,19 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick, computed } from "vue";
 import { Brain, ArrowDown, Send, Loader2 } from "lucide-vue-next";
+import { useChatSessionStore } from "@/stores/chatSession";
 import { useTaskStore } from "@/stores/task";
 import Bubble from "@/components/Bubble.vue";
 
+const chatSession = useChatSessionStore();
 const taskStore = useTaskStore();
 
 const emit = defineEmits<{
   send: [text: string];
 }>();
 
-const messages = computed(() => taskStore.messages);
-const isRunning = computed(() => taskStore.isRunning);
+const messages = computed(() => chatSession.activeMessages);
+const isRunning = computed(() => chatSession.isRunning);
 const isConnecting = computed(() =>
   taskStore.wsStatus === "connecting" || taskStore.wsStatus === "reconnecting"
 );

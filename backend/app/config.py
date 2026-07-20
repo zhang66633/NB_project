@@ -59,6 +59,14 @@ class Settings(BaseSettings):
     sandbox_timeout: int = 60
     sandbox_max_memory_mb: int = 512
 
+    # ---- GitHub OAuth ----
+    github_client_id: str = ""
+    github_client_secret: str = ""
+    github_redirect_uri: str = "http://localhost:5173/auth/callback"
+
+    # ---- JWT ----
+    jwt_secret: str = "change-me-in-production-use-a-random-secret"
+
     # ---- Project Root ----
     @property
     def project_root(self) -> Path:

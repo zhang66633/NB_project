@@ -1,7 +1,29 @@
 <template>
-  <div class="h-full overflow-y-auto bg-grid-paper">
-    <div class="mx-auto max-w-4xl px-6 sm:px-10 py-12 sm:py-16">
-        <!-- 标题区:§标记 + 衬线,去掉 em-dash -->
+  <!-- Loading -->
+  <div v-if="!authReady" class="h-screen flex items-center justify-center bg-background">
+    <Loader2 class="h-6 w-6 animate-spin text-muted-foreground" />
+  </div>
+
+  <!-- Access denied — clean full-screen, no sidebar -->
+  <div v-else-if="!isContributor" class="h-screen flex items-center justify-center bg-background">
+    <div class="text-center max-w-sm">
+      <ShieldAlert class="h-14 w-14 mx-auto text-muted-foreground/25 mb-5" />
+      <h2 class="font-display text-2xl font-medium mb-3">仅限贡献者访问</h2>
+      <p class="text-sm text-muted-foreground mb-8 leading-relaxed">
+        知识库管理功能仅对项目开发者开放。<br />
+        如需访问，请联系 zhang66633 或 shu639 授予权限。
+      </p>
+      <router-link to="/" class="inline-flex items-center gap-2 rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background hover:bg-foreground/90 transition-colors">
+        <ArrowLeft class="h-4 w-4" /> 返回首页
+      </router-link>
+    </div>
+  </div>
+
+  <!-- Contributor view — sidebar + content -->
+  <div v-else class="flex h-screen bg-background">
+    <AppSidebar />
+    <div class="flex-1 overflow-y-auto bg-grid-paper">
+      <div class="mx-auto max-w-4xl px-6 sm:px-10 py-12 sm:py-16">
         <p class="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4">§4 &nbsp; 知识库</p>
         <h1 class="font-display text-3xl sm:text-4xl font-medium tracking-tight">方法卡片、真题与模板</h1>
         <p class="mt-2 text-sm text-muted-foreground">检索已有知识,管理条目,或从原始文本导入新内容。</p>
@@ -158,16 +180,87 @@
     <!-- Detail Dialog -->
     <Dialog :open="!!detailItem" @update:open="detailItem = null">
       <DialogContent class="max-w-2xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader><DialogTitle class="font-display">{{ detailItem?.name || detailItem?.title }}</DialogTitle></DialogHeader>
-        <div v-if="detailLoading" class="space-y-3"><Skeleton class="h-4 w-full" /><Skeleton class="h-4 w-5/6" /></div>
-        <div v-else-if="detailData" class="text-sm space-y-4 py-2">
+        <DialogHeader>
+          <DialogTitle class="font-display">{{ detailItem?.name || detailItem?.title }}</DialogTitle>
+          <div v-if="detailRawText" class="flex items-center gap-1 rounded-md bg-muted p-0.5 w-fit mt-2">
+            <button class="rounded-sm px-3 py-1 text-xs font-medium transition-all"
+              :class="detailViewMode === 'structured' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+              @click="detailViewMode = 'structured'">结构化分析</button>
+            <button class="rounded-sm px-3 py-1 text-xs font-medium transition-all"
+              :class="detailViewMode === 'raw' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+              @click="detailViewMode = 'raw'">原始资料</button>
+          </div>
+        </DialogHeader>
+        <!-- Raw view -->
+        <pre v-if="detailViewMode === 'raw' && detailRawText" class="text-xs leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto rounded-md border bg-muted/30 p-4">{{ detailRawText }}</pre>
+        <div v-if="detailViewMode === 'raw' && !detailRawText" class="text-sm text-muted-foreground py-4">该条目没有原始资料（可能不是通过导入创建的）</div>
+        <!-- Structured view -->
+        <div v-if="detailLoading && detailViewMode === 'structured'" class="space-y-3"><Skeleton class="h-4 w-full" /><Skeleton class="h-4 w-5/6" /></div>
+        <div v-else-if="detailData && detailViewMode === 'structured'" class="text-sm space-y-4 py-2">
           <template v-if="detailData.type === 'method_card'">
             <p class="leading-relaxed">{{ (detailData.data as any).principle }}</p>
             <div><h4 class="font-display font-medium text-sm mb-1">适用条件</h4><ul class="list-disc list-inside text-muted-foreground text-sm"><li v-for="c in (detailData.data as any).applicable_when" :key="c">{{ c }}</li></ul></div>
           </template>
           <template v-if="detailData.type === 'paper'">
-            <p class="leading-relaxed">{{ (detailData.data as any).model?.approach }}</p>
-            <p class="text-muted-foreground leading-relaxed">{{ (detailData.data as any).evaluation?.lessons }}</p>
+            <div class="flex items-center gap-3 flex-wrap mb-3">
+              <span class="font-mono text-[10px] uppercase tracking-wider border border-border rounded-sm px-2 py-0.5">{{ (detailData.data as any).competition }} {{ (detailData.data as any).year }}·{{ (detailData.data as any).problem_id }}题</span>
+              <span class="text-xs text-amber-500">{{ '★'.repeat((detailData.data as any).quality_rating || 3) }}</span>
+              <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{{ (detailData.data as any).difficulty_level }}</span>
+            </div>
+            <!-- 问题背景 -->
+            <div v-if="(detailData.data as any).problem_context" class="rounded-md border border-border p-4 bg-muted/20">
+              <h4 class="font-display font-medium text-sm mb-2">问题背景</h4>
+              <p class="text-sm leading-relaxed text-muted-foreground">{{ (detailData.data as any).problem_context }}</p>
+            </div>
+            <!-- 方法链路 -->
+            <div v-if="(detailData.data as any).methodology_chain?.length" class="rounded-md border border-border p-4">
+              <h4 class="font-display font-medium text-sm mb-2">建模方法链路</h4>
+              <div class="space-y-1.5">
+                <div v-for="(step, i) in (detailData.data as any).methodology_chain" :key="i" class="flex items-start gap-2 text-sm">
+                  <span class="font-mono text-[10px] text-muted-foreground shrink-0 mt-1">{{ i + 1 }}.</span>
+                  <span>{{ step }}</span>
+                </div>
+              </div>
+            </div>
+            <!-- 核心公式 -->
+            <div v-if="(detailData.data as any).key_formulas?.length" class="rounded-md border border-border p-4">
+              <h4 class="font-display font-medium text-sm mb-2">核心公式</h4>
+              <div class="space-y-2">
+                <div v-for="f in (detailData.data as any).key_formulas" :key="f.name" class="rounded-sm bg-muted/30 p-3">
+                  <p class="font-mono text-xs mb-1">{{ f.name }}</p>
+                  <p class="font-serif text-sm mb-1 italic">{{ f.latex }}</p>
+                  <p class="text-xs text-muted-foreground">{{ f.description }}</p>
+                </div>
+              </div>
+            </div>
+            <!-- 算法概要 -->
+            <div v-if="(detailData.data as any).algorithm_outline?.length" class="rounded-md border border-border p-4">
+              <h4 class="font-display font-medium text-sm mb-2">算法概要</h4>
+              <div v-for="(a, i) in (detailData.data as any).algorithm_outline" :key="i" class="mb-3 last:mb-0">
+                <p class="text-xs text-muted-foreground mb-1">{{ a.description }}</p>
+                <pre class="rounded-sm bg-zinc-950 p-3 text-xs text-zinc-300 overflow-x-auto"><code>{{ a.code }}</code></pre>
+              </div>
+            </div>
+            <!-- 假设分析 -->
+            <div v-if="(detailData.data as any).assumption_analysis?.length" class="rounded-md border border-border p-4">
+              <h4 class="font-display font-medium text-sm mb-2">假设分析</h4>
+              <ul class="space-y-1.5"><li v-for="a in (detailData.data as any).assumption_analysis" :key="a" class="text-sm text-muted-foreground flex items-start gap-2"><span class="text-primary shrink-0">→</span>{{ a }}</li></ul>
+            </div>
+            <!-- 可复用模式 -->
+            <div v-if="(detailData.data as any).reusable_patterns?.length" class="rounded-md border border-emerald-200 bg-emerald-50/30 p-4">
+              <h4 class="font-display font-medium text-sm mb-2 text-emerald-800">可复用的建模模式</h4>
+              <ul class="space-y-1.5"><li v-for="p in (detailData.data as any).reusable_patterns" :key="p" class="text-sm text-emerald-700 flex items-start gap-2"><span class="text-emerald-500 shrink-0">✦</span>{{ p }}</li></ul>
+            </div>
+            <!-- 常见陷阱 -->
+            <div v-if="(detailData.data as any).common_pitfalls?.length" class="rounded-md border border-amber-200 bg-amber-50/30 p-4">
+              <h4 class="font-display font-medium text-sm mb-2 text-amber-800">常见陷阱</h4>
+              <div class="space-y-2"><div v-for="p in (detailData.data as any).common_pitfalls" :key="p.mistake" class="text-sm"><p class="text-amber-700">⚠ {{ p.mistake }}</p><p class="text-muted-foreground text-xs mt-0.5">→ {{ p.solution }}</p></div></div>
+            </div>
+            <!-- 评价 -->
+            <div class="border-t border-border pt-3 mt-2">
+              <p class="text-sm font-medium">可学之处</p>
+              <p class="text-sm text-muted-foreground leading-relaxed mt-1">{{ (detailData.data as any).evaluation?.lessons }}</p>
+            </div>
           </template>
           <template v-if="detailData.type === 'template'">
             <div v-for="s in (detailData.data as any).steps" :key="s.step" class="border-l-2 border-border pl-3 py-1">
@@ -231,6 +324,7 @@
       </DialogContent>
     </Dialog>
   </div>
+  </div> <!-- end v-else -->
 </template>
 
 <script setup lang="ts">
@@ -238,7 +332,10 @@ import { ref, computed, onMounted, watch } from "vue";
 import {
   Search, Library, Loader2, ChevronRight, RefreshCw, Database,
   Upload, Sparkles, Check, RotateCcw, Pencil, Trash2, FileText, FileUp, X, Layers,
+  ShieldAlert, ArrowLeft,
 } from "lucide-vue-next";
+import { useAuthStore } from "@/stores/auth";
+import AppSidebar from "@/components/AppSidebar.vue";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import {
@@ -247,7 +344,13 @@ import {
   uploadKnowledge, getExtractionJob,
   updateMethod, deleteMethod, updatePaper, deletePaper, updateTemplate, deleteTemplate,
   type SearchResult, type KBStats, type MethodCardSummary, type PaperSummary, type TemplateSummary,
+  getMethodRaw, getPaperRaw, getTemplateRaw,
 } from "@/apis/knowledgeApi";
+
+// ── auth ─────────────────────────────────────────────────────────
+const auth = useAuthStore();
+const isContributor = computed(() => auth.isContributor);
+const authReady = ref(false);
 
 // ── tabs ─────────────────────────────────────────────────────────
 const tabs = [
@@ -263,6 +366,7 @@ const searchLoading = ref(false); const searchDone = ref(false);
 const searchResults = ref<SearchResult[]>([]);
 const detailItem = ref<SearchResult | null>(null); const detailLoading = ref(false);
 const detailData = ref<{ type: string; data: Record<string, unknown> } | null>(null);
+const detailRawText = ref(""); const detailViewMode = ref<"structured" | "raw">("structured");
 const typeOpts = [{ label: "全部", value: "" }, { label: "方法卡片", value: "method_card" }, { label: "真题论文", value: "paper" }, { label: "框架模板", value: "template" }];
 const probOpts = [{ label: "全部", value: "" }, { label: "优化", value: "optimization" }, { label: "预测", value: "prediction" }, { label: "评价", value: "evaluation" }, { label: "统计", value: "statistics" }];
 function typeLabel(t: string) { return { method_card: "方法卡片", paper: "真题论文", template: "框架模板" }[t] || t; }
@@ -276,12 +380,19 @@ async function doSearch() {
 }
 async function openDetail(r: SearchResult) {
   detailItem.value = r; detailLoading.value = true; detailData.value = null;
+  detailRawText.value = ""; detailViewMode.value = "structured";
   try {
     if (r.type === "method_card") { const res = await getMethod(r.id); detailData.value = { type: "method_card", data: res.data as any }; }
     else if (r.type === "paper") { const res = await getPaper(r.id); detailData.value = { type: "paper", data: res.data as any }; }
     else { const res = await getTemplate(r.id); detailData.value = { type: "template", data: res.data as any }; }
   } catch { /* ignore */ }
   finally { detailLoading.value = false; }
+  // Fetch raw text in background
+  try {
+    if (r.type === "method_card") { const rr = await getMethodRaw(r.id); detailRawText.value = rr.data.raw_text; }
+    else if (r.type === "paper") { const rr = await getPaperRaw(r.id); detailRawText.value = rr.data.raw_text; }
+    else { const rr = await getTemplateRaw(r.id); detailRawText.value = rr.data.raw_text; }
+  } catch { /* no raw text available */ }
 }
 
 // ── Tab 2: Manage ───────────────────────────────────────────────
@@ -397,5 +508,9 @@ async function doSaveExtract() {
 // ── shared ──────────────────────────────────────────────────────
 const stats = ref<KBStats>({ methods_count:0,papers_count:0,templates_count:0,total:0 });
 async function loadStats() { try { const r = await getKBStats(); stats.value = r.data; } catch {/*ignore*/} }
-onMounted(() => loadStats());
+onMounted(async () => {
+  if (auth.token) await auth.checkSession();
+  authReady.value = true;
+  if (isContributor.value) loadStats();
+});
 </script>

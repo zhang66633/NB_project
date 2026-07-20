@@ -7,8 +7,8 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Form
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Form, Depends, Query
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from .schemas.request import CreateTaskRequest, ApiKeyCreate
 from .schemas.response import (
@@ -28,6 +28,85 @@ api_router.include_router(knowledge_router)
 # ── Session manager ──────────────────────────────────────────────
 
 from ..services.session import get_session_manager
+
+# ── Auth ─────────────────────────────────────────────────────────
+
+from ..auth import (
+    GitHubUser,
+    TokenResponse,
+    UserResponse,
+    get_oauth_client,
+    get_current_user,
+    require_auth,
+    require_contributor,
+    create_jwt,
+    ALLOWED_CONTRIBUTORS,
+)
+
+
+@api_router.get("/auth/login")
+async def github_login():
+    """返回 GitHub OAuth 授权 URL。前端跳转到此 URL 开始 GitHub 登录。"""
+    settings = get_settings()
+    if not settings.github_client_id or not settings.github_client_secret:
+        raise HTTPException(
+            status_code=503,
+            detail="GitHub OAuth 未配置。请在 backend/.env 中设置 GITHUB_CLIENT_ID 和 GITHUB_CLIENT_SECRET。"
+                   "创建 OAuth App: https://github.com/settings/developers",
+        )
+    client = get_oauth_client()
+    authorize_url = client.get_authorize_url()
+    return {"authorize_url": authorize_url}
+
+
+@api_router.get("/auth/callback")
+async def github_callback(code: str = Query(..., description="GitHub OAuth authorization code")):
+    """GitHub OAuth 回调 — code 换 token → 拉取 GitHub 用户信息 → 验证身份 → 签发 JWT。
+
+    仅允许项目贡献者（zhang66633、shu639）登录，其他人返回 403。
+    """
+    client = get_oauth_client()
+
+    # 1. Exchange code for access token
+    access_token, exchange_error = await client.exchange_code(code)
+    if not access_token:
+        raise HTTPException(
+            status_code=400,
+            detail=f"GitHub 授权失败: {exchange_error or '请重试'}",
+        )
+
+    # 2. 拉取 GitHub 真实用户信息（确保是本人）
+    github_user = await client.get_user(access_token)
+    if not github_user:
+        raise HTTPException(status_code=400, detail="获取 GitHub 用户信息失败")
+
+    # 3. 安全检查: 只允许项目贡献者登录
+    if not client.is_contributor(github_user):
+        raise HTTPException(
+            status_code=403,
+            detail=f"仅限项目贡献者 ({', '.join(sorted(ALLOWED_CONTRIBUTORS))}) 登录。"
+                   f"你的 GitHub 账号: {github_user.login}",
+        )
+
+    # 4. 签发 JWT
+    jwt_token = create_jwt(github_user)
+
+    return TokenResponse(access_token=jwt_token, user=github_user)
+
+
+@api_router.get("/auth/user", response_model=UserResponse)
+async def get_user_info(user: GitHubUser | None = Depends(get_current_user)):
+    """获取当前登录用户信息。未登录返回 authenticated=False。"""
+    if user is None:
+        return UserResponse(authenticated=False)
+    is_contributor = user.login.lower() in {c.lower() for c in ALLOWED_CONTRIBUTORS}
+    return UserResponse(authenticated=True, user=user, is_contributor=is_contributor)
+
+
+@api_router.post("/auth/logout")
+async def logout():
+    """登出（前端清除 JWT 即可）。"""
+    return {"success": True, "message": "已登出"}
 
 # ── Health check ─────────────────────────────────────────────────
 
@@ -224,11 +303,38 @@ async def _run_orchestrator(task_id: str, problem: str, mode: str):
         orchestrator = get_orchestrator()
         state = create_initial_state(problem_raw=problem, mode=mode, session_id=task_id)
 
-        # 运行编排图（同步方式，在线程池中执行）
-        result = await asyncio.to_thread(orchestrator.invoke, state)
-
-        # 收集消息
+        # 流式运行 — 每个节点完成后立即写入进度消息
+        session_mgr = get_session_manager()
+        node_names = {
+            "classify_problem": "[classify] 识别问题类型...",
+            "retrieve_knowledge": "[retrieve] 检索知识库...",
+            "plan_execution": "[plan] 制定执行计划...",
+            "analysis_agent": "[analysis] 问题分析中...",
+            "modeling_agent": "[modeling] 构建数学模型...",
+            "solving_agent": "[solving] 编写求解代码...",
+            "verification_agent": "[verification] 验证分析中...",
+            "writing_agent": "[writing] 生成 LaTeX 论文...",
+            "format_response": "[done] 整合输出...",
+        }
         messages = []
+        final_state = state
+
+        for chunk in orchestrator.stream(state, {"recursion_limit": 50}):
+            for node_name, node_output in chunk.items():
+                desc = node_names.get(node_name, f"执行: {node_name}")
+                progress_msg = {
+                    "id": str(uuid.uuid4())[:8],
+                    "msg_type": "system",
+                    "content": f"[{desc}]",
+                    "created_at": None,
+                }
+                messages.append(progress_msg)
+                session_mgr.update(task_id, messages=messages)
+                final_state = node_output
+
+        result = final_state
+
+        # 追加 agent 的详细信息到进度消息后面
         for msg in result.get("messages", []):
             messages.append({
                 "id": str(uuid.uuid4())[:8],
@@ -242,6 +348,11 @@ async def _run_orchestrator(task_id: str, problem: str, mode: str):
             task_id,
             status="completed",
             final_response=result.get("final_response", ""),
+            writing_output=result.get("writing_output", ""),
+            analysis_output=result.get("analysis_output", ""),
+            model_output=result.get("model_output", ""),
+            solving_output=result.get("solving_output", ""),
+            verification_output=result.get("verification_output", ""),
             messages=messages,
         )
 

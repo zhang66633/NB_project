@@ -11,6 +11,11 @@ class TaskResponse(BaseModel):
     problem: str
     mode: str
     final_response: Optional[str] = None
+    writing_output: Optional[str] = None
+    analysis_output: Optional[str] = None
+    model_output: Optional[str] = None
+    solving_output: Optional[str] = None
+    verification_output: Optional[str] = None
 
 
 class MessageResponse(BaseModel):

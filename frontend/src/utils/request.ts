@@ -2,11 +2,22 @@ import axios from "axios";
 
 const service = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
-  timeout: 10000,
+  timeout: 60000,
 });
 
+// Attach JWT token to every request
 service.interceptors.request.use(
-  (config) => config,
+  (config) => {
+    try {
+      const token = localStorage.getItem("mma:token");
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch {
+      /* ignore */
+    }
+    return config;
+  },
   (error) => {
     console.log(error);
     return Promise.reject(error);
@@ -19,3 +30,4 @@ service.interceptors.response.use(
 );
 
 export default service;
+export { service as request };

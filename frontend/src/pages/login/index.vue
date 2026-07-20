@@ -13,26 +13,26 @@
           </div>
         </div>
         <p class="text-lg text-gray-300 leading-relaxed">
-          使用 GitHub 账号一键登录，无需额外注册。你的建模数据将安全地关联到你的 GitHub 账号。
+          使用 GitHub 账号一键登录，无需额外注册。登录后将验证你的项目贡献者身份。
         </p>
         <div class="mt-8 space-y-4">
           <div class="flex items-center gap-3">
             <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
               <Shield class="h-4 w-4" />
             </div>
-            <span class="text-gray-300">GitHub OAuth 安全授权</span>
-          </div>
-          <div class="flex items-center gap-3">
-            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
-              <Zap class="h-4 w-4" />
-            </div>
-            <span class="text-gray-300">一键登录，无需密码</span>
+            <span class="text-gray-300">GitHub OAuth 安全授权 — 拉取真实账户信息</span>
           </div>
           <div class="flex items-center gap-3">
             <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
               <Users class="h-4 w-4" />
             </div>
-            <span class="text-gray-300">开源社区驱动</span>
+            <span class="text-gray-300">仅限项目贡献者 — zhang66633 & shu639</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
+              <Zap class="h-4 w-4" />
+            </div>
+            <span class="text-gray-300">管理知识库、上传内容需登录验证</span>
           </div>
         </div>
       </div>
@@ -59,8 +59,14 @@
         <div class="text-center mb-8">
           <h1 class="text-2xl font-bold">登录 MathModelAgent</h1>
           <p class="text-sm text-muted-foreground mt-2">
-            使用 GitHub 账号授权登录，即刻开始建模
+            GitHub 授权后将拉取你的账户信息并验证贡献者身份
           </p>
+        </div>
+
+        <!-- Setup error hint -->
+        <div v-if="setupError" class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          <p class="font-medium mb-1">⚠️ 未配置 GitHub OAuth</p>
+          <p class="whitespace-pre-wrap">{{ setupError }}</p>
         </div>
 
         <!-- GitHub login button -->
@@ -74,51 +80,41 @@
           {{ loading ? '正在跳转 GitHub 授权...' : '使用 GitHub 账号登录' }}
         </button>
 
-        <!-- Divider -->
+        <!-- Feature list -->
         <div class="relative my-6">
           <div class="absolute inset-0 flex items-center">
             <span class="w-full border-t" />
           </div>
           <div class="relative flex justify-center text-xs uppercase">
-            <span class="bg-background px-2 text-muted-foreground">登录后你可以</span>
+            <span class="bg-background px-2 text-muted-foreground">仅限以下贡献者</span>
           </div>
         </div>
 
-        <!-- Feature list -->
-        <div class="space-y-3">
-          <div class="flex items-center gap-3 rounded-lg border p-3">
-            <MessageSquare class="h-5 w-5 text-primary shrink-0" />
+        <div class="grid grid-cols-2 gap-3">
+          <div class="flex items-center gap-2 rounded-lg border p-3">
+            <img
+              src="https://avatars.githubusercontent.com/u/235469039"
+              class="h-8 w-8 rounded-full"
+            />
             <div>
-              <p class="text-sm font-medium">多智能体对话</p>
-              <p class="text-xs text-muted-foreground">5 个专业智能体协同解决建模问题</p>
+              <p class="text-sm font-medium">zhang66633</p>
+              <p class="text-xs text-muted-foreground">Zhang</p>
             </div>
           </div>
-          <div class="flex items-center gap-3 rounded-lg border p-3">
-            <FolderOpen class="h-5 w-5 text-primary shrink-0" />
+          <div class="flex items-center gap-2 rounded-lg border p-3">
+            <img
+              src="https://avatars.githubusercontent.com/u/269112767"
+              class="h-8 w-8 rounded-full"
+            />
             <div>
-              <p class="text-sm font-medium">任务管理</p>
-              <p class="text-xs text-muted-foreground">保存和管理你的建模任务历史</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-3 rounded-lg border p-3">
-            <Download class="h-5 w-5 text-primary shrink-0" />
-            <div>
-              <p class="text-sm font-medium">论文导出</p>
-              <p class="text-xs text-muted-foreground">导出完整建模方案和论文</p>
+              <p class="text-sm font-medium">shu639</p>
+              <p class="text-xs text-muted-foreground">Shu</p>
             </div>
           </div>
         </div>
-
-        <!-- Terms -->
-        <p class="mt-8 text-center text-xs text-muted-foreground">
-          登录即表示你同意我们的
-          <a href="#" class="text-primary hover:underline">服务条款</a>
-          和
-          <a href="#" class="text-primary hover:underline">隐私政策</a>
-        </p>
 
         <!-- Back home -->
-        <div class="mt-6 text-center">
+        <div class="mt-8 text-center">
           <router-link
             to="/"
             class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -133,34 +129,46 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import {
   Github,
   Shield,
   Zap,
   Users,
   Sigma,
-  MessageSquare,
-  FolderOpen,
-  Download,
   ArrowLeft,
   Loader2,
 } from "lucide-vue-next";
-import { APP_NAME, GITHUB_LINK } from "@/utils/const";
+import { APP_NAME } from "@/utils/const";
+import { useAuthStore } from "@/stores/auth";
 
+const router = useRouter();
+const auth = useAuthStore();
 const loading = ref(false);
+const setupError = ref("");
 
-function handleGithubLogin() {
+async function handleGithubLogin() {
   loading.value = true;
-  const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID || "";
-  if (!clientId) {
-    alert("请先在 .env.development 中配置 VITE_GITHUB_CLIENT_ID");
-    loading.value = false;
-    return;
+  setupError.value = "";
+  try {
+    const data = await getAuthLogin();
+    if (data.authorize_url) {
+      window.location.href = data.authorize_url;
+      return;
+    }
+    setupError.value = "后端返回空授权链接，请重启后端确保 .env 中 GITHUB_CLIENT_ID 和 GITHUB_CLIENT_SECRET 已填写";
+  } catch (e: any) {
+    const msg = e?.response?.data?.detail || e?.message || "获取授权链接失败";
+    // 如果是网络错误，给更明确的提示
+    if (!e?.response) {
+      setupError.value = "无法连接后端，请确认后端已启动 (http://localhost:8000)";
+    } else {
+      setupError.value = msg;
+    }
   }
-  const redirectUri = encodeURIComponent(window.location.origin + "/auth/callback");
-  const scope = "read:user user:email";
-  const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}`;
-  window.location.href = githubAuthUrl;
+  loading.value = false;
 }
+
+import { getAuthLogin } from "@/apis/authApi";
 </script>

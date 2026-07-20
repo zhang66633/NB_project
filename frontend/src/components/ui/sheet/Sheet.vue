@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, provide } from "vue";
 import { DialogRoot, type DialogRootProps } from "reka-ui";
 import type { SheetSide } from "./types";
 

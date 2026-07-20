@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, inject } from "vue";
 import {
   DialogContent,
   DialogOverlay,
   DialogPortal,
+  DialogClose,
   type DialogContentProps,
 } from "reka-ui";
 import { cn } from "@/lib/utils";

@@ -1,73 +1,87 @@
 <template>
-  <div class="flex h-screen bg-background">
-    <AppSidebar :collapsed="sidebarCollapsed" />
+  <div class="flex h-full bg-background">
+    <!-- Welcome:学术手稿式,左对齐,§章节标记,衬线标题,无彩色图标方块 -->
+    <div v-if="!hasStarted" class="flex-1 overflow-y-auto bg-grid-paper">
+      <div class="mx-auto max-w-3xl px-6 sm:px-10 py-20 sm:py-28">
+        <p class="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground mb-6">
+          §2 &nbsp; 对话
+        </p>
+        <h2 class="font-display text-4xl sm:text-5xl font-medium tracking-tight leading-[1.05]">
+          {{ welcomeMode === 'teach' ? '引导式建模' : '结构化输出' }}
+        </h2>
+        <p class="font-display italic text-xl sm:text-2xl text-muted-foreground mt-3 leading-[1.2] pb-1">
+          {{ welcomeMode === 'teach' ? '先想后给,留下推理痕迹' : '从问题到论文,一次成型' }}
+        </p>
+        <p class="mt-6 text-sm text-muted-foreground max-w-xl leading-relaxed">
+          {{ welcomeMode === 'teach'
+            ? '描述你遇到的问题,智能体以提问引导你逐步建立建模思维。'
+            : '描述你遇到的问题,智能体输出完整建模方案、代码与论文。' }}
+        </p>
 
-    <div class="flex flex-1 flex-col min-w-0">
-      <header class="flex h-14 items-center justify-between border-b px-4 gap-3">
-        <div class="flex items-center gap-3">
-          <button class="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-accent transition-colors"
-            @click="sidebarCollapsed = !sidebarCollapsed">
-            <PanelLeft class="h-4 w-4" />
-          </button>
-          <div v-if="hasStarted" class="flex items-center gap-2">
-            <h2 class="text-sm font-semibold truncate max-w-[200px]">{{ taskTitle }}</h2>
-            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium shrink-0"
-              :class="currentMode === 'execute' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'">
-              {{ currentMode === 'execute' ? '方案输出' : '教学' }}
-            </span>
-          </div>
-          <span v-else class="text-sm font-semibold">新对话</span>
-        </div>
-        <div class="flex items-center gap-3">
-          <ServiceStatus />
-          <button v-if="hasStarted" class="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-accent transition-colors"
-            @click="rightPanelOpen = !rightPanelOpen">
-            <PanelRight class="h-4 w-4" />
+        <!-- 模式切换:等宽小标签,非胶囊填充 -->
+        <div class="mt-10 flex items-center gap-5">
+          <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">模式</span>
+          <button
+            v-for="mode in modeOptions"
+            :key="mode.value"
+            class="font-mono text-xs transition-colors"
+            :class="welcomeMode === mode.value ? 'text-primary' : 'text-muted-foreground/60 hover:text-foreground'"
+            @click="welcomeMode = mode.value"
+          >
+            {{ mode.label }}
           </button>
         </div>
-      </header>
 
-      <!-- Welcome -->
-      <div v-if="!hasStarted" class="flex-1 flex items-center justify-center">
-        <div class="w-full max-w-2xl px-6 text-center">
-          <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 mx-auto mb-6">
-            <MessageSquare class="h-8 w-8 text-primary" />
+        <!-- 问题输入:细线边框,无卡片包裹 -->
+        <div class="mt-6">
+          <textarea
+            v-model="welcomeProblem"
+            rows="5"
+            placeholder="例如:某物流公司需在 5 个备选地点中选 2 个建配送中心,最小化总运输成本..."
+            class="w-full resize-none rounded-md border border-border bg-background px-4 py-3 text-sm leading-relaxed placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            @keydown.ctrl.enter="startConversation"
+          />
+          <div class="mt-3 flex items-center justify-between">
+            <span class="font-mono text-[10px] text-muted-foreground/70">⌘+Enter 提交</span>
+            <button
+              class="group inline-flex items-center gap-2 rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background transition-transform hover:scale-[0.98] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              @click="startConversation"
+            >
+              进入对话
+              <ArrowRight class="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            </button>
           </div>
-          <h2 class="text-2xl font-bold mb-2">{{ welcomeMode === 'teach' ? '教学模式' : '方案输出模式' }}</h2>
-          <p class="text-muted-foreground mb-8">{{ welcomeMode === 'teach' ? '苏格拉底式引导，逐步培养建模思维' : '结构化输出完整建模方案' }}</p>
-          <div class="rounded-2xl border bg-card p-6 shadow-sm">
-            <textarea v-model="welcomeProblem" rows="4" placeholder="描述你的数学建模问题..."
-              class="w-full resize-none rounded-xl border border-input bg-background px-4 py-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              @keydown.ctrl.enter="startConversation" />
-            <div class="flex items-center justify-between mt-3">
-              <div class="flex items-center gap-2">
-                <button v-for="mode in modeOptions" :key="mode.value"
-                  class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors"
-                  :class="welcomeMode === mode.value ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'"
-                  @click="welcomeMode = mode.value">{{ mode.label }}</button>
-              </div>
-              <button class="inline-flex items-center justify-center rounded-xl bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                @click="startConversation">
-                <MessageSquare class="h-4 w-4 mr-1.5" />进入对话
-              </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat:已开始对话 -->
+    <div v-else class="flex flex-1 min-h-0">
+      <div class="flex-1 min-w-0 relative">
+        <button
+          v-if="hasStarted"
+          class="absolute top-2 right-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/80 backdrop-blur hover:bg-accent transition-colors"
+          title="切换执行进度面板"
+          @click="rightPanelOpen = !rightPanelOpen"
+        >
+          <PanelRight class="h-4 w-4" />
+        </button>
+        <ChatArea :task-id="currentTaskId" @send="handleUserSend" />
+      </div>
+      <Transition name="slide-right">
+        <div v-if="rightPanelOpen" class="w-80 shrink-0 border-l bg-background flex flex-col overflow-hidden">
+          <div class="border-b px-4 py-3">
+            <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">§ 执行进度</span>
+          </div>
+          <div class="flex-1 overflow-y-auto p-4"><UserStepper :steps="agentSteps" /></div>
+          <div class="flex-1 border-t overflow-hidden">
+            <div class="border-b px-4 py-2">
+              <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">§ 笔记</span>
             </div>
+            <NotebookArea :cells="notebookCells" />
           </div>
         </div>
-      </div>
-
-      <!-- Chat -->
-      <div v-else class="flex flex-1 min-h-0">
-        <div class="flex-1 min-w-0 relative">
-          <ChatArea :task-id="currentTaskId" @send="handleUserSend" />
-        </div>
-        <Transition name="slide-right">
-          <div v-if="rightPanelOpen" class="w-80 border-l bg-background flex flex-col overflow-hidden">
-            <div class="border-b px-4 py-2 bg-muted/30"><span class="text-xs font-medium text-muted-foreground">执行进度</span></div>
-            <div class="flex-1 overflow-y-auto p-4"><UserStepper :steps="agentSteps" /></div>
-            <div class="flex-1 border-t overflow-hidden"><NotebookArea :cells="notebookCells" /></div>
-          </div>
-        </Transition>
-      </div>
+      </Transition>
     </div>
   </div>
 </template>
@@ -75,9 +89,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
 import { useRoute } from "vue-router";
-import { PanelLeft, PanelRight, MessageSquare } from "lucide-vue-next";
-import AppSidebar from "@/components/AppSidebar.vue";
-import ServiceStatus from "@/components/ServiceStatus.vue";
+import { PanelRight, ArrowRight } from "lucide-vue-next";
 import ChatArea from "@/components/ChatArea.vue";
 import UserStepper from "@/components/UserStepper.vue";
 import NotebookArea from "@/components/NotebookArea.vue";
@@ -88,7 +100,6 @@ import type { Message } from "@/utils/response";
 const route = useRoute();
 const taskStore = useTaskStore();
 
-const sidebarCollapsed = ref(false);
 const rightPanelOpen = ref(true);
 const welcomeProblem = ref("");
 const welcomeMode = ref<"teach" | "execute">("teach");
@@ -107,7 +118,7 @@ const agentSteps = ref([
   { id: "2", label: "知识检索", status: "wait" as const, description: "从知识库检索方法、论文和模板" },
   { id: "3", label: "问题分析", status: "wait" as const, description: "深度分析问题结构" },
   { id: "4", label: "模型构建", status: "wait" as const, description: "选择或设计数学模型" },
-  { id: "5", label: "求解计算", status: "wait" as const, description: "编写代码，执行计算" },
+  { id: "5", label: "求解计算", status: "wait" as const, description: "编写代码,执行计算" },
   { id: "6", label: "验证分析", status: "wait" as const, description: "模型验证与鲁棒性分析" },
   { id: "7", label: "论文写作", status: "wait" as const, description: "生成规范论文" },
 ]);
@@ -115,15 +126,14 @@ const agentSteps = ref([
 const notebookCells = ref<Array<{ cell_type: string; source?: string }>>([]);
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-// 当后端不可用时的模拟回复
 const mockReplies: Record<string, string[]> = {
   teach: [
-    "🤔 **让我们一起来分析这个问题。**\n\n首先，你能尝试回答：这个问题的**核心目标**是什么？是最大化某个量，还是最小化？",
-    "📝 **很好！下一步我们来看决策变量。**\n\n在这个问题中，哪些因素的值是我们可以决定的？",
-    "💡 **现在考虑约束条件。**\n\n我们的决策受到哪些现实条件的限制？试着至少列出 3 条约束。",
+    "🤔 **让我们一起来分析这个问题。**\n\n首先,你能尝试回答:这个问题的**核心目标**是什么?是最大化某个量,还是最小化?",
+    "📝 **很好!下一步我们来看决策变量。**\n\n在这个问题中,哪些因素的值是我们可以决定的?",
+    "💡 **现在考虑约束条件。**\n\n我们的决策受到哪些现实条件的限制?试着至少列出 3 条约束。",
   ],
   execute: [
-    "📋 **已提交建模任务，智能体正在分析中...**\n\n正在启动多智能体编排流程。后端处理完成后结果将自动显示。",
+    "📋 **已提交建模任务,智能体正在分析中...**\n\n正在启动多智能体编排流程。后端处理完成后结果将自动显示。",
   ],
 };
 const replyIndex: Record<string, number> = {};
@@ -146,7 +156,6 @@ async function startConversation() {
   taskTitle.value = welcomeProblem.value.trim() ? welcomeProblem.value.slice(0, 40) + "..." : "新对话";
   const problem = welcomeProblem.value.trim() || "请帮我分析一个数学建模问题";
 
-  // 先进入聊天界面
   const localId = generateId();
   currentTaskId.value = localId;
   hasStarted.value = true;
@@ -155,17 +164,14 @@ async function startConversation() {
   addUserMsg(problem);
   taskStore.isRunning = true;
 
-  // 尝试调用后端
   try {
     const res = await createTask({ problem, mode: welcomeMode.value });
     const realTaskId = res.data.task_id;
-    // 切换到真实 task ID 并开始轮询
     currentTaskId.value = realTaskId;
     taskStore.setCurrentTask(realTaskId);
     startPolling(realTaskId);
   } catch {
-    // 后端不可用 — 用模拟回复
-    console.warn("后端不可用，使用模拟回复");
+    console.warn("后端不可用,使用模拟回复");
     triggerMockReply(localId);
   }
 }
@@ -192,7 +198,6 @@ function startPolling(taskId: string) {
 
   pollTimer = setInterval(async () => {
     try {
-      // 拉取消息
       const msgRes = await getTaskMessages(taskId);
       const msgs: Message[] = Array.isArray(msgRes.data) ? msgRes.data : [];
       for (const m of msgs) {
@@ -201,11 +206,8 @@ function startPolling(taskId: string) {
           addMsg(m);
         }
       }
-
-      // 更新步骤状态
       updateSteps(msgs);
 
-      // 检查任务是否完成
       const taskRes = await getTask(taskId);
       if (taskRes.data.status === "completed") {
         if (taskRes.data.final_response) {
@@ -253,7 +255,6 @@ function triggerMockReply(taskId: string) {
   const replies = mockReplies[currentMode.value] || mockReplies.execute;
   const idx = replyIndex[taskId]++ % replies.length;
 
-  // 更新步骤
   if (currentMode.value === "execute") {
     agentSteps.value.forEach((s, i) => { s.status = i < 7 ? "done" : "wait"; });
   }

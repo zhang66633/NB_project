@@ -1,223 +1,184 @@
 <template>
-  <div class="min-h-screen bg-background">
-    <!-- Header -->
-    <header class="border-b">
-      <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-        <div class="flex items-center gap-4">
-          <div class="flex items-center gap-2">
-            <div class="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
-              <Sigma class="h-4 w-4 text-primary-foreground" />
-            </div>
-            <span class="font-semibold text-sm">{{ APP_NAME }}</span>
-          </div>
-          <a
-            :href="GITHUB_LINK"
-            target="_blank"
-            class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            title="查看源码"
-          >
-            <Github class="h-4 w-4" />
-            <span class="hidden sm:inline">GitHub</span>
-          </a>
+  <div class="bg-grid-paper min-h-full">
+    <div class="mx-auto max-w-4xl px-6 sm:px-10">
+
+      <!-- 标题区:大留白,衬线大标题 + italic 副标题,左对齐 -->
+      <header class="pt-20 pb-24 sm:pt-28 sm:pb-32">
+        <p class="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground mb-6">
+          ·0 &nbsp; 工作台
+        </p>
+        <h1 class="font-display text-5xl sm:text-6xl font-medium tracking-tight leading-[1.05]">
+          数学建模
+        </h1>
+        <p class="font-display italic text-2xl sm:text-3xl text-muted-foreground mt-3 leading-[1.2] pb-1">
+          一份正在演算的手册
+        </p>
+        <p class="mt-8 text-base text-muted-foreground max-w-xl leading-relaxed">
+          选择模式进入对话。教学模式以引导提问培养建模思维,方案模式结构化输出完整解题流程。
+          所有推理与代码可追溯,像翻阅一份带批注的研究笔记。
+        </p>
+      </header>
+
+      <!-- ·1 模式:章节列表式,左描述 + 右公式装饰 -->
+      <section class="pb-24">
+        <div class="section-rule mb-12">
+          <span class="font-mono text-xs tracking-wider">·1 &nbsp; 开始</span>
         </div>
-        <button
-          class="inline-flex items-center gap-2 justify-center rounded-xl bg-[#24292e] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#1b1f23] hover:shadow-lg hover:shadow-black/20 transition-all ring-1 ring-white/10"
-          @click="loginOpen = true"
-        >
-          <Github class="h-5 w-5" />
-          <span>GitHub 登录</span>
-        </button>
-      </div>
-    </header>
 
-    <!-- Hero -->
-    <section class="mx-auto max-w-4xl px-6 pt-20 pb-16 text-center">
-      <h1 class="text-5xl font-bold tracking-tight sm:text-6xl">
-        数学建模
-        <span class="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-          多智能体
-        </span>
-        辅助系统
-      </h1>
-      <p class="mt-6 text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-        {{ APP_DESC }} — 基于 LangGraph 多智能体编排，支持教学模式与方案输出双模式，
-        帮助您高效解决各类数学建模问题。
-      </p>
-    </section>
-
-    <!-- Mode Cards -->
-    <section class="mx-auto max-w-5xl px-6 pb-16">
-      <div class="grid gap-6 sm:grid-cols-2">
-        <!-- Teach mode -->
-        <div
-          class="group cursor-pointer rounded-3xl border-2 p-8 transition-all hover:border-green-300 hover:shadow-xl"
-          :class="selectedMode === 'teach' ? 'border-green-500 bg-green-50/50 shadow-lg' : 'border-border bg-card'"
-          @click="selectedMode = 'teach'"
-        >
-          <div class="flex items-start gap-5">
-            <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-green-100">
-              <GraduationCap class="h-8 w-8 text-green-600" />
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-12 lg:gap-16">
+          <!-- 教学模式:占 3 -->
+          <article class="lg:col-span-3">
+            <div class="flex items-baseline gap-3 mb-3">
+              <span class="font-mono text-xs text-primary">·1.1</span>
+              <h2 class="font-display text-2xl font-medium">教学模式</h2>
             </div>
-            <div class="text-left flex-1">
-              <h3 class="font-bold text-2xl">教学模式</h3>
-              <p class="text-base text-muted-foreground mt-2 leading-relaxed">
-                苏格拉底式引导提问，逐步培养建模思维。适合日常训练与备赛学习。
-              </p>
-            </div>
-          </div>
-          <div class="mt-6 flex items-center justify-between">
-            <div class="flex items-center gap-2 text-base text-green-600">
-              <Lightbulb class="h-5 w-5" />
-              <span>引导式学习 · 思维展开 · 原理讲解</span>
-            </div>
+            <p class="text-sm text-muted-foreground leading-relaxed max-w-md mb-5">
+              苏格拉底式引导提问,逐步建立建模思维。适合日常训练与备赛学习,留下完整推理痕迹。
+            </p>
+            <p class="font-mono text-xs text-muted-foreground mb-6">
+              <span class="text-foreground/60">示例问题:</span>
+              如何在总运输成本最小化时满足各节点需求?
+            </p>
             <button
-              class="inline-flex items-center gap-2 rounded-xl bg-green-600 px-6 py-3 text-base font-semibold text-white hover:bg-green-700 transition-colors"
-              @click.stop="enterChat('teach')"
+              class="group inline-flex items-center gap-2 rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background transition-transform hover:scale-[0.98] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              @click="enterChat('teach')"
             >
               开始学习
-              <ArrowRight class="h-5 w-5" />
+              <ArrowRight class="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
             </button>
-          </div>
+          </article>
+
+          <!-- 公式装饰块:占 2,像论文里的公式 -->
+          <aside class="lg:col-span-2 lg:border-l lg:border-border lg:pl-8">
+            <p class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">
+              典型形式
+            </p>
+            <pre class="font-mono text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">min  Z = Σᵢ Σⱼ cᵢⱼ · xᵢⱼ
+
+s.t.  Σᵢ xᵢⱼ = Dⱼ,  ∀j ∈ J
+       xᵢⱼ ∈ {0, 1}</pre>
+            <p class="font-mono text-[10px] text-muted-foreground/70 mt-3">
+              [mc_008] 运输问题 · 整数规划
+            </p>
+          </aside>
         </div>
 
-        <!-- Execute mode -->
-        <div
-          class="group cursor-pointer rounded-3xl border-2 p-8 transition-all hover:border-blue-300 hover:shadow-xl"
-          :class="selectedMode === 'execute' ? 'border-blue-500 bg-blue-50/50 shadow-lg' : 'border-border bg-card'"
-          @click="selectedMode = 'execute'"
-        >
-          <div class="flex items-start gap-5">
-            <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-blue-100">
-              <FileText class="h-8 w-8 text-blue-600" />
+        <!-- 方案模式:第二行,反向(左公式右描述)打破对称 -->
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-12 lg:gap-16 mt-16">
+          <aside class="lg:col-span-2 lg:order-1 lg:border-r lg:border-border lg:pr-8">
+            <p class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-3">
+              输出结构
+            </p>
+            <pre class="font-mono text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">1. 问题重述与假设
+2. 模型建立
+3. 求解与代码
+4. 结果分析
+5. 论文撰写</pre>
+          </aside>
+          <article class="lg:col-span-3 lg:order-2">
+            <div class="flex items-baseline gap-3 mb-3">
+              <span class="font-mono text-xs text-primary">·1.2</span>
+              <h2 class="font-display text-2xl font-medium">方案模式</h2>
             </div>
-            <div class="text-left flex-1">
-              <h3 class="font-bold text-2xl">方案输出模式</h3>
-              <p class="text-base text-muted-foreground mt-2 leading-relaxed">
-                接收问题，结构化输出完整建模方案。适合实战解题与竞赛冲刺。
-              </p>
-            </div>
-          </div>
-          <div class="mt-6 flex items-center justify-between">
-            <div class="flex items-center gap-2 text-base text-blue-600">
-              <Zap class="h-5 w-5" />
-              <span>完整方案 · 代码执行 · 论文输出</span>
-            </div>
+            <p class="text-sm text-muted-foreground leading-relaxed max-w-md mb-5">
+              结构化输出完整建模方案,含代码执行、结果验证与论文。适合限时竞赛与正式提交。
+            </p>
             <button
-              class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-base font-semibold text-white hover:bg-blue-700 transition-colors"
-              @click.stop="enterChat('execute')"
+              class="group inline-flex items-center gap-2 rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background transition-transform hover:scale-[0.98] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              @click="enterChat('execute')"
             >
               开始建模
-              <ArrowRight class="h-5 w-5" />
+              <ArrowRight class="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
             </button>
-          </div>
+          </article>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- Login Sidebar Overlay -->
-    <Transition name="slide">
-      <div
-        v-if="loginOpen"
-        class="fixed inset-0 z-50 flex justify-end"
-      >
-        <div
-          class="absolute inset-0 bg-black/50 backdrop-blur-sm"
-          @click="loginOpen = false"
-        />
-        <div class="relative w-full max-w-md bg-background h-full shadow-2xl flex flex-col">
-          <div class="flex items-center justify-between px-6 py-4 border-b">
-            <h2 class="text-lg font-semibold">登录</h2>
+      <!-- ·2 模块:紧凑列表式,divide-y,非图标卡片 -->
+      <section class="pb-24">
+        <div class="section-rule mb-8">
+          <span class="font-mono text-xs tracking-wider">·2 &nbsp; 模块</span>
+        </div>
+        <ul class="divide-y divide-border">
+          <li v-for="mod in modules" :key="mod.path">
             <button
-              class="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-accent transition-colors"
-              @click="loginOpen = false"
+              class="group flex w-full items-center gap-6 py-4 text-left transition-colors"
+              @click="router.push(mod.path)"
             >
-              <X class="h-5 w-5" />
+              <span class="font-mono text-xs text-muted-foreground w-8 shrink-0">{{ mod.num }}</span>
+              <span class="font-display text-lg font-medium w-28 shrink-0 transition-colors group-hover:text-primary">
+                {{ mod.label }}
+              </span>
+              <span class="text-sm text-muted-foreground flex-1 truncate">{{ mod.desc }}</span>
+              <ArrowRight class="h-4 w-4 text-muted-foreground/50 transition-all group-hover:text-primary group-hover:translate-x-1 shrink-0" />
             </button>
-          </div>
-          <div class="flex-1 flex flex-col items-center justify-center px-8 py-12">
-            <div class="flex h-20 w-20 items-center justify-center rounded-3xl bg-[#24292e] mb-8">
-              <Github class="h-11 w-11 text-white" />
-            </div>
-            <h3 class="text-xl font-bold mb-2">使用 GitHub 登录</h3>
-            <p class="text-sm text-muted-foreground text-center mb-8">
-              一键授权登录，无需额外注册
-            </p>
-            <button
-              class="flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-[#24292e] text-base font-semibold text-white hover:bg-[#1b1f23] hover:shadow-lg transition-all"
-              :disabled="loggingIn"
-              @click="handleGithubLogin"
-            >
-              <Loader2 v-if="loggingIn" class="h-6 w-6 animate-spin" />
-              <Github v-else class="h-6 w-6" />
-              {{ loggingIn ? '正在跳转...' : 'GitHub 账号登录' }}
-            </button>
-            <p class="mt-6 text-xs text-muted-foreground text-center">
-              登录即表示同意服务条款和隐私政策
-            </p>
+          </li>
+        </ul>
+      </section>
+
+      <!-- §3 知识库:等宽大数字横向,无框 -->
+      <section v-if="statsReady" class="pb-20">
+        <div class="section-rule mb-10">
+          <span class="font-mono text-xs tracking-wider">·3 &nbsp; 知识库</span>
+        </div>
+        <div class="grid grid-cols-3 gap-8">
+          <div v-for="s in statItems" :key="s.key">
+            <p class="font-mono text-4xl sm:text-5xl font-medium tabular-nums leading-none">{{ s.value }}</p>
+            <p class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mt-3">{{ s.label }}</p>
           </div>
         </div>
-      </div>
-    </Transition>
+      </section>
+
+      <!-- 脚注:游客提示,像论文脚注 -->
+      <footer class="border-t border-border py-10 mb-8">
+        <p class="font-mono text-xs text-muted-foreground/80 leading-relaxed max-w-2xl">
+          <span class="text-primary">†</span> &nbsp;
+          当前为本地游客模式,对话与任务保存在本机。如需云端同步或多端协作,可在右上角设置中配置。
+        </p>
+      </footer>
+
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import {
-  Sigma,
-  Github,
-  GraduationCap,
-  FileText,
-  Lightbulb,
-  Zap,
-  ArrowRight,
-  X,
-  Loader2,
-} from "lucide-vue-next";
-import { APP_NAME, APP_DESC, GITHUB_LINK } from "@/utils/const";
+import { ArrowRight } from "lucide-vue-next";
+import { getKBStats, type KBStats } from "@/apis/knowledgeApi";
 
 const router = useRouter();
 
-const selectedMode = ref<"teach" | "execute">("teach");
-const loginOpen = ref(false);
-const loggingIn = ref(false);
+const statsReady = ref(false);
+
+const modules = [
+  { num: "§2", label: "对话", desc: "与智能体交互,实时推进建模", path: "/chat" },
+  { num: "§3", label: "任务", desc: "查看建模任务的状态与产物", path: "/task/0" },
+  { num: "§4", label: "知识库", desc: "方法卡片、真题与模板套路", path: "/knowledge" },
+  { num: "§5", label: "例题", desc: "浏览示例与解析,参照学习", path: "/example/1" },
+];
+
+const statItems = ref([
+  { key: "methods", label: "方法卡片", value: 0 },
+  { key: "papers", label: "真题论文", value: 0 },
+  { key: "templates", label: "模板套路", value: 0 },
+]);
 
 function enterChat(mode: "teach" | "execute") {
   router.push({ path: "/chat", query: { mode } });
 }
 
-function handleGithubLogin() {
-  loggingIn.value = true;
-  const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID || "";
-  if (!clientId) {
-    alert("请先在 .env.development 中配置 VITE_GITHUB_CLIENT_ID");
-    loggingIn.value = false;
-    return;
+onMounted(async () => {
+  try {
+    const data = await getKBStats();
+    statItems.value = [
+      { key: "methods", label: "方法卡片", value: data.methods_count },
+      { key: "papers", label: "真题论文", value: data.papers_count },
+      { key: "templates", label: "模板套路", value: data.templates_count },
+    ];
+    statsReady.value = true;
+  } catch {
+    statsReady.value = false;
   }
-  const redirectUri = encodeURIComponent(window.location.origin + "/auth/callback");
-  const scope = "read:user user:email";
-  window.location.href = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}`;
-}
+});
 </script>
-
-<style scoped>
-.slide-enter-active,
-.slide-leave-active {
-  transition: opacity 0.3s ease;
-}
-.slide-enter-active > div:last-child,
-.slide-leave-active > div:last-child {
-  transition: transform 0.3s ease;
-}
-.slide-enter-from,
-.slide-leave-to {
-  opacity: 0;
-}
-.slide-enter-from > div:last-child {
-  transform: translateX(100%);
-}
-.slide-leave-to > div:last-child {
-  transform: translateX(100%);
-}
-</style>

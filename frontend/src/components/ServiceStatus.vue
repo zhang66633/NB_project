@@ -5,16 +5,18 @@
       :title="statusText"
     >
       <span
-        class="absolute inline-flex h-full w-full rounded-full opacity-75"
-        :class="pingColor"
         v-if="status === 'connecting' || status === 'reconnecting'"
+        class="absolute inline-flex h-full w-full rounded-sm opacity-75 animate-ping"
+        :class="pingColor"
       />
       <span
-        class="relative inline-flex h-2.5 w-2.5 rounded-full"
-        :class="dotColor"
+        class="relative inline-flex h-2.5 w-2.5 rounded-sm border"
+        :class="dotClass"
       />
     </span>
-    <span class="text-muted-foreground text-xs">{{ statusText }}</span>
+    <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+      {{ statusText }}
+    </span>
   </div>
 </template>
 
@@ -24,34 +26,36 @@ import { useTaskStore } from "@/stores/task";
 
 const taskStore = useTaskStore();
 
+const status = computed(() => taskStore.wsStatus);
+
 const statusText = computed(() => {
   const map: Record<string, string> = {
     connected: "已连接",
-    connecting: "连接中...",
+    connecting: "连接中",
     disconnected: "未连接",
-    reconnecting: "重连中...",
+    reconnecting: "重连中",
   };
-  return map[taskStore.wsStatus] ?? "未知";
+  return map[status.value] ?? "未知";
 });
 
-const dotColor = computed(() => {
-  switch (taskStore.wsStatus) {
+// 学术手稿:暖橙单色 + 细线方框,去掉刺眼红/绿
+const dotClass = computed(() => {
+  switch (status.value) {
     case "connected":
-      return "bg-green-500";
+      return "border-primary bg-primary";
     case "connecting":
     case "reconnecting":
-      return "bg-yellow-500";
+      return "border-primary bg-primary/50";
     default:
-      return "bg-red-500";
+      return "border-border bg-muted";
   }
 });
 
 const pingColor = computed(() => {
-  switch (taskStore.wsStatus) {
+  switch (status.value) {
     case "connecting":
-      return "animate-ping bg-yellow-400";
     case "reconnecting":
-      return "animate-ping bg-yellow-400";
+      return "bg-primary/50";
     default:
       return "";
   }

@@ -11,7 +11,7 @@ export function submitModelingTask(data: {
   if (data.files) {
     data.files.forEach((file) => formData.append("files", file));
   }
-  return request.post("/api/tasks", formData, {
+  return request.post("/tasks", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
 }

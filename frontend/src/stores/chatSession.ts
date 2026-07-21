@@ -1,13 +1,13 @@
-/** 聊天会话持久化 Store — 多会话管理，对话+任务记录跨页面保留 */
 import { ref, computed } from "vue";
 import { defineStore } from "pinia";
 import type { Message } from "@/utils/response";
 
+export type SessionMode = "chat" | "teach" | "solution";
+
 export interface ChatSession {
   id: string;
   title: string;
-  type: "chat" | "task";
-  mode: "teach" | "execute";
+  mode: SessionMode;
   messages: Message[];
   createdAt: string;
   updatedAt: string;
@@ -24,110 +24,178 @@ function genId() {
 export const useChatSessionStore = defineStore(
   "chatSession",
   () => {
-    const sessions = ref<ChatSession[]>([]);
-    const activeSessionId = ref<string | null>(null);
+    const chatSessions = ref<ChatSession[]>([]);
+    const teachSessions = ref<ChatSession[]>([]);
+    const solutionSessions = ref<ChatSession[]>([]);
+
+    const activeChatId = ref<string | null>(null);
+    const activeTeachId = ref<string | null>(null);
+    const activeSolutionId = ref<string | null>(null);
+
     const isRunning = ref(false);
 
-    const activeSession = computed(() =>
-      sessions.value.find((s) => s.id === activeSessionId.value) ?? null,
+    function getSessions(mode: SessionMode) {
+      switch (mode) {
+        case "chat": return chatSessions;
+        case "teach": return teachSessions;
+        case "solution": return solutionSessions;
+      }
+    }
+
+    function getActiveId(mode: SessionMode) {
+      switch (mode) {
+        case "chat": return activeChatId;
+        case "teach": return activeTeachId;
+        case "solution": return activeSolutionId;
+      }
+    }
+
+    function setActiveId(mode: SessionMode, id: string | null) {
+      switch (mode) {
+        case "chat": activeChatId.value = id; break;
+        case "teach": activeTeachId.value = id; break;
+        case "solution": activeSolutionId.value = id; break;
+      }
+    }
+
+    const sortedChatSessions = computed(() =>
+      [...chatSessions.value].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+    );
+    const sortedTeachSessions = computed(() =>
+      [...teachSessions.value].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+    );
+    const sortedSolutionSessions = computed(() =>
+      [...solutionSessions.value].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
     );
 
-    const activeMessages = computed(() => activeSession.value?.messages ?? []);
+    function getSortedSessions(mode: SessionMode) {
+      switch (mode) {
+        case "chat": return sortedChatSessions;
+        case "teach": return sortedTeachSessions;
+        case "solution": return sortedSolutionSessions;
+      }
+    }
 
-    const sortedSessions = computed(() =>
-      [...sessions.value].sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      ),
+    const activeChatSession = computed(() =>
+      chatSessions.value.find((s) => s.id === activeChatId.value) ?? null,
+    );
+    const activeTeachSession = computed(() =>
+      teachSessions.value.find((s) => s.id === activeTeachId.value) ?? null,
+    );
+    const activeSolutionSession = computed(() =>
+      solutionSessions.value.find((s) => s.id === activeSolutionId.value) ?? null,
     );
 
-    // ── Chat ─────────────────────────────────────────────
+    function getActiveSession(mode: SessionMode) {
+      switch (mode) {
+        case "chat": return activeChatSession;
+        case "teach": return activeTeachSession;
+        case "solution": return activeSolutionSession;
+      }
+    }
 
-    function createSession(mode: "teach" | "execute" = "execute"): string {
+    const activeChatMessages = computed(() => activeChatSession.value?.messages ?? []);
+    const activeTeachMessages = computed(() => activeTeachSession.value?.messages ?? []);
+    const activeSolutionMessages = computed(() => activeSolutionSession.value?.messages ?? []);
+
+    function getActiveMessages(mode: SessionMode) {
+      switch (mode) {
+        case "chat": return activeChatMessages;
+        case "teach": return activeTeachMessages;
+        case "solution": return activeSolutionMessages;
+      }
+    }
+
+    function createSession(mode: SessionMode): string {
       const id = genId();
-      sessions.value.push({
+      const titleMap: Record<SessionMode, string> = {
+        chat: "新对话",
+        teach: "新学习",
+        solution: "新方案",
+      };
+      const session: ChatSession = {
         id,
-        title: "新对话",
-        type: "chat",
+        title: titleMap[mode],
         mode,
         messages: [],
         createdAt: now(),
         updatedAt: now(),
-      });
-      activeSessionId.value = id;
+      };
+      getSessions(mode).value.push(session);
+      setActiveId(mode, id);
       return id;
     }
 
-    // ── Task ─────────────────────────────────────────────
-
-    function createTaskSession(taskId: string, title: string, mode: "teach" | "execute"): string {
-      // 如果已存在同一 taskId 的会话，直接切换
-      const existing = sessions.value.find((s) => s.id === taskId && s.type === "task");
-      if (existing) {
-        activeSessionId.value = existing.id;
-        return existing.id;
-      }
-      sessions.value.push({
-        id: taskId,
-        title: title || "新任务",
-        type: "task",
-        mode,
-        messages: [],
-        createdAt: now(),
-        updatedAt: now(),
-      });
-      activeSessionId.value = taskId;
-      return taskId;
-    }
-
-    // ── Common ───────────────────────────────────────────
-
-    function switchSession(id: string) {
-      if (sessions.value.some((s) => s.id === id)) {
-        activeSessionId.value = id;
+    function switchSession(mode: SessionMode, id: string) {
+      const list = getSessions(mode).value;
+      if (list.some((s) => s.id === id)) {
+        setActiveId(mode, id);
       }
     }
 
-    function deleteSession(id: string) {
-      const idx = sessions.value.findIndex((s) => s.id === id);
+    function deleteSession(mode: SessionMode, id: string) {
+      const list = getSessions(mode).value;
+      const idx = list.findIndex((s) => s.id === id);
       if (idx === -1) return;
-      sessions.value.splice(idx, 1);
-      if (activeSessionId.value === id) {
-        activeSessionId.value = sortedSessions.value[0]?.id ?? null;
+      list.splice(idx, 1);
+      const activeId = getActiveId(mode);
+      if (activeId.value === id) {
+        const sorted = getSortedSessions(mode).value;
+        setActiveId(mode, sorted[0]?.id ?? null);
       }
     }
 
-    function addMessage(sessionId: string, msg: Message) {
-      const session = sessions.value.find((s) => s.id === sessionId);
+    function renameSession(mode: SessionMode, id: string, newTitle: string) {
+      const list = getSessions(mode).value;
+      const session = list.find((s) => s.id === id);
+      if (!session) return;
+      session.title = newTitle.trim() || "新对话";
+      session.updatedAt = now();
+    }
+
+    function addMessage(mode: SessionMode, sessionId: string, msg: Message) {
+      const list = getSessions(mode).value;
+      const session = list.find((s) => s.id === sessionId);
       if (!session) return;
       session.messages.push(msg);
       session.updatedAt = now();
-      if (session.title === "新对话" && msg.msg_type === "user" && msg.content) {
+      const defaultTitle: Record<SessionMode, string> = {
+        chat: "新对话",
+        teach: "新学习",
+        solution: "新方案",
+      };
+      if (session.title === defaultTitle[mode] && msg.msg_type === "user" && msg.content) {
         session.title = msg.content.slice(0, 30) + (msg.content.length > 30 ? "..." : "");
       }
     }
 
-    function addMessageToActive(msg: Message) {
-      if (!activeSessionId.value) return;
-      addMessage(activeSessionId.value, msg);
+    function addMessageToActive(mode: SessionMode, msg: Message) {
+      const activeId = getActiveId(mode).value;
+      if (!activeId) return;
+      addMessage(mode, activeId, msg);
     }
 
-    function clearActive() {
-      activeSessionId.value = null;
+    function clearActive(mode: SessionMode) {
+      setActiveId(mode, null);
     }
 
     return {
-      sessions, activeSessionId, isRunning,
-      activeSession, activeMessages, sortedSessions,
-      createSession, createTaskSession,
-      switchSession, deleteSession,
+      chatSessions, teachSessions, solutionSessions,
+      activeChatId, activeTeachId, activeSolutionId,
+      isRunning,
+      sortedChatSessions, sortedTeachSessions, sortedSolutionSessions,
+      activeChatSession, activeTeachSession, activeSolutionSession,
+      activeChatMessages, activeTeachMessages, activeSolutionMessages,
+      createSession, switchSession, deleteSession, renameSession,
       addMessage, addMessageToActive, clearActive,
+      getSessions, getActiveId, getSortedSessions, getActiveSession, getActiveMessages,
     };
   },
   {
     persist: {
       key: "mma-chat-sessions",
       storage: localStorage,
-      pick: ["sessions", "activeSessionId"],
+      pick: ["chatSessions", "teachSessions", "solutionSessions", "activeChatId", "activeTeachId", "activeSolutionId"],
     },
   },
 );

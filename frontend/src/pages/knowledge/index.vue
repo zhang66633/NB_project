@@ -1,11 +1,11 @@
 <template>
   <!-- Loading -->
-  <div v-if="!authReady" class="h-screen flex items-center justify-center bg-background">
+  <div v-if="!authReady" class="h-full flex items-center justify-center">
     <Loader2 class="h-6 w-6 animate-spin text-muted-foreground" />
   </div>
 
-  <!-- Access denied — clean full-screen, no sidebar -->
-  <div v-else-if="!isContributor" class="h-screen flex items-center justify-center bg-background">
+  <!-- Access denied -->
+  <div v-else-if="!isContributor" class="h-full flex items-center justify-center">
     <div class="text-center max-w-sm">
       <ShieldAlert class="h-14 w-14 mx-auto text-muted-foreground/25 mb-5" />
       <h2 class="font-display text-2xl font-medium mb-3">仅限贡献者访问</h2>
@@ -19,14 +19,12 @@
     </div>
   </div>
 
-  <!-- Contributor view — sidebar + content -->
-  <div v-else class="flex h-screen bg-background">
-    <AppSidebar />
-    <div class="flex-1 overflow-y-auto bg-grid-paper">
-      <div class="mx-auto max-w-4xl px-6 sm:px-10 py-12 sm:py-16">
-        <p class="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4">§4 &nbsp; 知识库</p>
-        <h1 class="font-display text-3xl sm:text-4xl font-medium tracking-tight">方法卡片、真题与模板</h1>
-        <p class="mt-2 text-sm text-muted-foreground">检索已有知识,管理条目,或从原始文本导入新内容。</p>
+  <!-- Contributor view -->
+  <div v-else class="h-full overflow-y-auto overflow-x-hidden bg-grid-paper">
+    <div class="mx-auto max-w-4xl px-6 sm:px-10 py-12 sm:py-16 overflow-x-hidden">
+      <p class="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4">§4 &nbsp; 知识库</p>
+      <h1 class="font-display text-3xl sm:text-4xl font-medium tracking-tight">方法卡片、真题与模板</h1>
+      <p class="mt-2 text-sm text-muted-foreground">检索已有知识,管理条目,或从原始文本导入新内容。</p>
 
         <!-- Tabs:章节式等宽标签 + 下划线高亮,无胶囊背景 -->
         <div class="flex items-center gap-6 border-b mt-8 mb-8">
@@ -139,10 +137,10 @@
               @click="triggerFileInput" @dragover.prevent="dragOver = true" @dragleave.prevent="dragOver = false" @drop.prevent="onDrop">
               <input ref="fileRef" type="file" accept=".txt,.md,.pdf,.doc,.docx,.tex" class="hidden" @change="onFileSel" />
               <template v-if="impFile">
-                <div class="flex items-center justify-center gap-2 text-sm">
-                  <FileText class="h-5 w-5 text-primary" /><span class="font-medium">{{ impFile.name }}</span>
-                  <span class="font-mono text-[10px] text-muted-foreground">{{ fmtSize(impFile.size) }}</span>
-                  <button class="ml-2 rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" @click.stop="clearFile"><X class="h-3.5 w-3.5" /></button>
+                <div class="flex items-center justify-center gap-2 text-sm min-w-0 flex-wrap">
+                  <FileText class="h-5 w-5 text-primary shrink-0" /><span class="font-medium truncate min-w-0">{{ impFile.name }}</span>
+                  <span class="font-mono text-[10px] text-muted-foreground shrink-0">{{ fmtSize(impFile.size) }}</span>
+                  <button class="ml-2 rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive shrink-0" @click.stop="clearFile"><X class="h-3.5 w-3.5" /></button>
                 </div>
                 <p class="font-mono text-[10px] text-muted-foreground/70 mt-1">文件内容已加载,可在下方编辑后提取</p>
               </template>
@@ -156,9 +154,9 @@
             <label class="block font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-2 mt-5">{{ impFile ? '文件内容(可编辑)' : '粘贴原始文本' }}</label>
             <textarea v-model="impText" rows="8" :placeholder="impPlaceholder"
               class="w-full resize-y rounded-md border border-border bg-background px-4 py-3 text-sm leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-            <div class="flex items-center gap-2 mt-3">
-              <input v-model="impName" type="text" placeholder="名称(可选)" class="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-              <button class="flex items-center rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background hover:bg-foreground/90 disabled:opacity-50 transition-transform active:scale-[0.98]"
+            <div class="flex items-center gap-2 mt-3 flex-wrap">
+              <input v-model="impName" type="text" placeholder="名称(可选)" class="flex-1 min-w-0 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+              <button class="flex items-center whitespace-nowrap rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background hover:bg-foreground/90 disabled:opacity-50 transition-transform active:scale-[0.98]"
                 :disabled="!impText.trim() || extracting" @click="doExtract">
                 <Loader2 v-if="extracting" class="h-4 w-4 mr-1.5 animate-spin" /><Sparkles v-else class="h-4 w-4 mr-1.5" />{{ extracting ? '提取中' : 'LLM 提取并预览' }}
               </button>
@@ -324,7 +322,6 @@
       </DialogContent>
     </Dialog>
   </div>
-  </div> <!-- end v-else -->
 </template>
 
 <script setup lang="ts">
@@ -335,7 +332,6 @@ import {
   ShieldAlert, ArrowLeft,
 } from "lucide-vue-next";
 import { useAuthStore } from "@/stores/auth";
-import AppSidebar from "@/components/AppSidebar.vue";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import {

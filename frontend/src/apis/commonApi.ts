@@ -1,17 +1,17 @@
 import request from "@/utils/request";
 
 export function getTaskMessages(taskId: string) {
-  return request.get(`/api/tasks/${taskId}/messages`);
+  return request.get(`/tasks/${taskId}/messages`);
 }
 
 export function cancelTask(taskId: string) {
-  return request.post(`/api/tasks/${taskId}/cancel`);
+  return request.post(`/tasks/${taskId}/cancel`);
 }
 
 export function getTask(taskId: string) {
-  return request.get(`/api/tasks/${taskId}`);
+  return request.get(`/tasks/${taskId}`);
 }
 
 export function createTask(data: { problem: string; mode: string }) {
-  return request.post("/api/tasks", data);
+  return request.post("/tasks", data);
 }

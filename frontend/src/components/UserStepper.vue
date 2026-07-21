@@ -27,7 +27,6 @@
       <!-- 内容:衬线标签 + 等宽序号 -->
       <div class="pb-4 flex-1 min-w-0">
         <div class="flex items-baseline gap-2">
-          <span class="font-mono text-[10px] text-muted-foreground/60 shrink-0">{{ idx + 1 }}.</span>
           <p
             class="text-sm transition-colors"
             :class="step.status === 'active' ? 'text-foreground font-display font-medium' : 'text-muted-foreground'"

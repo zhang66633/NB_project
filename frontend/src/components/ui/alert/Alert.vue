@@ -44,7 +44,7 @@ export const AlertDescription = defineComponent({
 </script>
 
 <script setup lang="ts">
-import { cva, type VariantProps } from 'class-variance-authority'
+import { cva } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const alertVariants = cva(
@@ -63,7 +63,9 @@ const alertVariants = cva(
   },
 )
 
-export type AlertProps = VariantProps<typeof alertVariants> & {
+// 手动定义类型，避免使用 VariantProps 触发 Vue 编译器解析 TSConditionalType
+export type AlertProps = {
+  variant?: 'default' | 'destructive'
   class?: string
 }
 

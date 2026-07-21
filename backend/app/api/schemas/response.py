@@ -39,7 +39,9 @@ class ApiKeyResponse(BaseModel):
     id: str
     name: str
     provider: str
+    model_name: str = "deepseek-chat"
     masked_key: str
+    is_default: bool = False
 
 
 # ── Knowledge Base ──────────────────────────────────────────────

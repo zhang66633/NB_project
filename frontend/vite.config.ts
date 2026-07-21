@@ -21,5 +21,8 @@ export default defineConfig({
         ws: true,
       },
     },
+    hmr: {
+      overlay: false,
+    },
   },
 });

@@ -1,87 +1,67 @@
 <template>
-  <div
-    :class="[
-      'flex gap-3 my-2 animate-in fade-in slide-in-from-bottom-2',
-      isUser ? 'justify-end' : 'justify-start',
-    ]"
-  >
-    <!-- Agent/System 头像:细线方框(非彩色圆),衬线首字母 -->
-    <div
-      v-if="!isUser"
-      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-border"
-    >
-      <span class="font-display text-xs font-medium leading-none">{{ avatarLetter }}</span>
-    </div>
-
-    <!-- 气泡:rounded-md(非 2xl),用户深近黑,agent 细线 -->
-    <div
-      :class="[
-        'max-w-[80%] rounded-md px-4 py-3 text-sm leading-relaxed',
-        isUser
-          ? 'bg-foreground text-background rounded-br-sm'
-          : 'border border-border bg-background text-foreground rounded-bl-sm',
-      ]"
-    >
-      <!-- Agent 类型标签:等宽小字(非彩色 badge) -->
-      <div v-if="isAgent && agentLabel" class="mb-1.5">
-        <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">[{{ agentLabel }}]</span>
-      </div>
-
-      <!-- 工具调用 -->
-      <div v-if="isTool" class="space-y-1">
-        <div class="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          <Wrench class="h-3 w-3" />
-          <span>调用工具: {{ toolName }}</span>
-        </div>
-        <div v-if="toolInput" class="text-xs text-muted-foreground font-mono bg-muted/40 rounded p-1.5 overflow-x-auto border border-border">
-          {{ formatToolInput(toolInput) }}
-        </div>
-      </div>
-
-      <!-- 系统消息 -->
-      <div v-else-if="isSystem" class="flex items-center gap-2">
-        <component :is="sysIcon" class="h-4 w-4 shrink-0" :class="sysColor" />
-        <span class="text-xs">{{ content }}</span>
-      </div>
-
-      <!-- Markdown 内容 -->
-      <div
-        v-else-if="content"
-        class="prose prose-sm dark:prose-invert max-w-none break-words"
-        v-html="renderedContent"
-      />
-
-      <!-- 加载占位 -->
-      <div v-else class="flex items-center gap-1.5 py-1">
-        <span class="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style="animation-delay: 0ms" />
-        <span class="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style="animation-delay: 150ms" />
-        <span class="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style="animation-delay: 300ms" />
-      </div>
-
-      <!-- 时间戳:等宽小字 -->
-      <div
-        :class="[
-          'mt-1.5 font-mono text-[10px]',
-          isUser ? 'text-background/50' : 'text-muted-foreground/70',
-        ]"
-        v-if="timestamp"
-      >
-        {{ timestamp }}
+  <div class="flex gap-3 w-full my-2 animate-in fade-in slide-in-from-bottom-2">
+    <div v-if="!isUser" class="flex flex-col items-center shrink-0">
+      <div class="flex h-8 w-8 items-center justify-center rounded-sm border border-border">
+        <span class="font-display text-xs font-medium leading-none">{{ avatarLetter }}</span>
       </div>
     </div>
 
-    <!-- 用户头像:细线方框 + 衬线 U -->
-    <div
-      v-if="isUser"
-      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-border"
-    >
+    <div class="flex-1 min-w-0">
+      <div :class="isUser ? 'flex flex-col items-end' : 'flex flex-col items-start'">
+        <div
+          :class="[
+            'max-w-[calc(100%-72px)] rounded-md px-4 py-3 text-sm leading-relaxed',
+            isUser
+              ? 'bg-foreground text-background rounded-br-sm'
+              : 'border border-border bg-background text-foreground rounded-bl-sm',
+          ]"
+        >
+          <div v-if="isAgent && agentLabel" class="mb-1.5">
+            <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">[{{ agentLabel }}]</span>
+          </div>
+
+          <div v-if="isTool" class="space-y-1">
+            <div class="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              <Wrench class="h-3 w-3" />
+              <span>调用工具: {{ toolName }}</span>
+            </div>
+            <div v-if="toolInput" class="text-xs text-muted-foreground font-mono bg-muted/40 rounded p-1.5 overflow-x-auto border border-border">
+              {{ formatToolInput(toolInput) }}
+            </div>
+          </div>
+
+          <div v-else-if="isSystem" class="flex items-center gap-2">
+            <component :is="sysIcon" class="h-4 w-4 shrink-0" :class="sysColor" />
+            <span class="text-xs">{{ content }}</span>
+          </div>
+
+          <div
+            v-else-if="content"
+            class="prose prose-sm dark:prose-invert max-w-none break-words"
+            :class="{ 'cursor-pointer': isTyping }"
+            v-html="renderedContent"
+            @click="isTyping && skip()"
+          />
+
+          <div v-else class="flex items-center gap-1.5 py-1">
+            <span class="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style="animation-delay: 0ms" />
+            <span class="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style="animation-delay: 150ms" />
+            <span class="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style="animation-delay: 300ms" />
+          </div>
+
+        </div>
+        <span v-if="timestamp" class="font-mono text-[10px] text-muted-foreground/50 mt-0.5">{{ timestamp }}</span>
+      </div>
+    </div>
+
+    <div v-if="isUser" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-border">
       <span class="font-display text-xs font-medium leading-none">U</span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import { marked } from "marked";
 import markedKatex from "marked-katex-extension";
 import {
@@ -93,6 +73,7 @@ import {
 } from "lucide-vue-next";
 import type { Message, SystemMessage as SysMsg, AgentMessage, ToolMessage } from "@/utils/response";
 import { AgentType } from "@/utils/enum";
+import { useTypewriter } from "@/composables/useTypewriter";
 
 marked.use(markedKatex({ throwOnError: false, nonStandard: true }));
 
@@ -109,6 +90,15 @@ const isSystem = computed(() => props.message.msg_type === "system");
 const isTool = computed(() => props.message.msg_type === "tool");
 
 const content = computed(() => props.message.content ?? "");
+
+const enableTypewriter = computed(() => props.isLast && isAgent.value);
+const rawText = ref(content.value);
+
+const { displayText, isTyping, skip } = useTypewriter(rawText, 12, enableTypewriter);
+
+watch(content, (val) => {
+  rawText.value = val;
+}, { immediate: true });
 
 const agentLabel = computed(() => {
   if (!isAgent.value) return "";
@@ -162,8 +152,9 @@ const sysColor = computed(() => {
 });
 
 const renderedContent = computed(() => {
-  if (!content.value) return "";
-  return marked.parse(content.value) as string;
+  const text = enableTypewriter.value ? displayText.value : content.value;
+  if (!text) return "";
+  return marked.parse(text) as string;
 });
 
 const timestamp = computed(() => {

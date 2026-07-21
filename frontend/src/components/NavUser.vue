@@ -123,6 +123,8 @@ function handleAction(action: string) {
   open.value = false;
   if (action === "settings") {
     router.push("/settings");
+  } else if (action === "apikeys") {
+    router.push("/apikeys");
   }
 }
 

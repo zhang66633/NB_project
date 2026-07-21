@@ -25,21 +25,36 @@ const routes: RouteRecordRaw[] = [
         component: () => import("@/pages/chat/index.vue"),
       },
       {
-        path: "task/:task_id",
-        component: () => import("@/pages/task/index.vue"),
-        props: true,
+        path: "teach",
+        component: () => import("@/pages/teach/index.vue"),
+      },
+      {
+        path: "solution",
+        component: () => import("@/pages/solution/index.vue"),
       },
       {
         path: "example/:id",
         component: () => import("@/pages/example/[id].vue"),
         props: true,
       },
+      {
+        path: "archive/:id",
+        component: () => import("@/pages/archive/[id].vue"),
+        props: true,
+      },
+      {
+        path: "knowledge",
+        component: () => import("@/pages/knowledge/index.vue"),
+      },
+      {
+        path: "apikeys",
+        component: () => import("@/pages/apikeys.vue"),
+      },
+      {
+        path: "settings",
+        component: () => import("@/pages/settings.vue"),
+      },
     ],
-  },
-  // 知识库独立路由 — 非贡献者显示全屏权限页
-  {
-    path: "/knowledge",
-    component: () => import("@/pages/knowledge/index.vue"),
   },
 ];
 

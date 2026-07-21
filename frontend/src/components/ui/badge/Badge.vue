@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { cva, type VariantProps } from 'class-variance-authority'
+import { cva } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const badgeVariants = cva(
@@ -22,7 +22,9 @@ const badgeVariants = cva(
   },
 )
 
-export type BadgeProps = VariantProps<typeof badgeVariants> & {
+// 手动定义类型，避免使用 VariantProps 触发 Vue 编译器解析 TSConditionalType
+export type BadgeProps = {
+  variant?: 'default' | 'secondary' | 'destructive' | 'outline'
   class?: string
 }
 

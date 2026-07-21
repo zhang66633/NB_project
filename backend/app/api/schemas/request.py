@@ -19,7 +19,8 @@ class ApiKeyCreate(BaseModel):
     """添加 API Key 请求。"""
     name: str
     key: str
-    provider: str = "anthropic"
+    provider: str = "openai"
+    model_name: str = "deepseek-chat"
 
 
 class FileUploadRequest(BaseModel):

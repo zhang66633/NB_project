@@ -36,7 +36,7 @@
     "@vitejs/plugin-vue": "^5.2.1",
     "@vue/tsconfig": "^0.7.0",
     "autoprefixer": "^10.4.20",
-    "class-variance-authority": "^0.7.1",
+    "class-variance-authority": "^0.6.0",
     "clsx": "^2.1.1",
     "tailwind-merge": "^3.0.2",
     "tailwindcss": "3",

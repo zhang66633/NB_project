@@ -171,9 +171,8 @@ const statsReady = ref(false);
 
 const modules = [
   { num: "§2", label: "对话", desc: "与智能体交互,实时推进建模", path: "/chat" },
-  { num: "§3", label: "任务", desc: "查看建模任务的状态与产物", path: "/task/0" },
-  { num: "§4", label: "知识库", desc: "方法卡片、真题与模板套路", path: "/knowledge" },
-  { num: "§5", label: "例题", desc: "浏览示例与解析,参照学习", path: "/example/1" },
+  { num: "§3", label: "知识库", desc: "方法卡片、真题与模板套路", path: "/knowledge" },
+  { num: "§4", label: "例题", desc: "浏览示例与解析,参照学习", path: "/example/1" },
 ];
 
 const statItems = ref([
@@ -183,7 +182,7 @@ const statItems = ref([
 ]);
 
 function enterChat(mode: "teach" | "execute") {
-  router.push({ path: "/chat", query: { mode } });
+  router.push(mode === "teach" ? "/teach" : "/solution");
 }
 
 onMounted(async () => {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { PrimitiveProps } from 'reka-ui'
 import { Primitive } from 'reka-ui'
-import { cva, type VariantProps } from 'class-variance-authority'
+import { cva } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
@@ -33,10 +33,12 @@ const buttonVariants = cva(
   },
 )
 
-export type ButtonProps = PrimitiveProps &
-  VariantProps<typeof buttonVariants> & {
-    class?: string
-  }
+// 手动定义类型，避免使用 VariantProps 触发 Vue 编译器解析 TSConditionalType
+export type ButtonProps = PrimitiveProps & {
+  variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
+  size?: 'default' | 'sm' | 'lg' | 'icon'
+  class?: string
+}
 
 const props = withDefaults(defineProps<ButtonProps>(), {
   as: 'button',

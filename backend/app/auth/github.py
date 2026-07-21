@@ -115,9 +115,15 @@ _oauth_client: Optional[GitHubOAuthClient] = None
 def get_oauth_client() -> GitHubOAuthClient:
     """Get or create the GitHub OAuth client singleton."""
     global _oauth_client
+    from app.config import get_settings
+    settings = get_settings()
     if _oauth_client is None:
-        from app.config import get_settings
-        settings = get_settings()
+        _oauth_client = GitHubOAuthClient(
+            client_id=settings.github_client_id,
+            client_secret=settings.github_client_secret,
+            redirect_uri=settings.github_redirect_uri,
+        )
+    elif _oauth_client.redirect_uri != settings.github_redirect_uri:
         _oauth_client = GitHubOAuthClient(
             client_id=settings.github_client_id,
             client_secret=settings.github_client_secret,

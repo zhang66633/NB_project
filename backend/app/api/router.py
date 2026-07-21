@@ -161,9 +161,9 @@ async def list_tasks():
 
 # ── API Keys ─────────────────────────────────────────────────────
 
-_api_keys_store: dict[str, dict] = {}  # key_id → {name, key, provider, masked_key}
-
+_api_keys_store: dict[str, dict] = {}  # key_id → {name, key, provider, model_name, masked_key}
 _api_keys_file = None
+_default_key_id = None
 
 
 def _get_api_keys_path() -> Path:
@@ -175,19 +175,36 @@ def _get_api_keys_path() -> Path:
 
 
 def _load_api_keys():
-    global _api_keys_store
+    global _api_keys_store, _default_key_id
     path = _get_api_keys_path()
     if path.exists():
         try:
-            _api_keys_store = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"))
+            _api_keys_store = data.get("keys", {})
+            _default_key_id = data.get("default_key_id")
         except Exception:
             _api_keys_store = {}
+            _default_key_id = None
 
 
 def _save_api_keys():
     path = _get_api_keys_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_api_keys_store, ensure_ascii=False, indent=2), encoding="utf-8")
+    data = {
+        "keys": _api_keys_store,
+        "default_key_id": _default_key_id,
+    }
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def get_active_api_key() -> dict | None:
+    """获取当前活动的 API Key（优先默认 key，否则返回第一个）。"""
+    _load_api_keys()
+    if _default_key_id and _default_key_id in _api_keys_store:
+        return _api_keys_store[_default_key_id]
+    if _api_keys_store:
+        return next(iter(_api_keys_store.values()))
+    return None
 
 
 @api_router.get("/apikeys", response_model=list[ApiKeyResponse])
@@ -197,8 +214,10 @@ async def list_api_keys():
         ApiKeyResponse(
             id=kid,
             name=v.get("name", ""),
-            provider=v.get("provider", "anthropic"),
+            provider=v.get("provider", "openai"),
+            model_name=v.get("model_name", "deepseek-chat"),
             masked_key=v.get("masked_key", "****"),
+            is_default=kid == _default_key_id,
         )
         for kid, v in _api_keys_store.items()
     ]
@@ -214,11 +233,23 @@ async def create_api_key(req: ApiKeyCreate):
         "name": req.name,
         "key": req.key,
         "provider": req.provider,
+        "model_name": req.model_name,
         "masked_key": masked,
     }
+
+    if not _default_key_id:
+        _default_key_id = key_id
+
     _save_api_keys()
 
-    return ApiKeyResponse(id=key_id, name=req.name, provider=req.provider, masked_key=masked)
+    return ApiKeyResponse(
+        id=key_id,
+        name=req.name,
+        provider=req.provider,
+        model_name=req.model_name,
+        masked_key=masked,
+        is_default=key_id == _default_key_id,
+    )
 
 
 @api_router.delete("/apikeys/{key_id}")
@@ -227,8 +258,21 @@ async def delete_api_key(key_id: str):
     if key_id not in _api_keys_store:
         raise HTTPException(status_code=404, detail="API Key 不存在")
     del _api_keys_store[key_id]
+    if _default_key_id == key_id:
+        _default_key_id = next(iter(_api_keys_store.keys()), None)
     _save_api_keys()
     return {"success": True, "message": "API Key 已删除"}
+
+
+@api_router.post("/apikeys/{key_id}/default")
+async def set_default_api_key(key_id: str):
+    _load_api_keys()
+    if key_id not in _api_keys_store:
+        raise HTTPException(status_code=404, detail="API Key 不存在")
+    global _default_key_id
+    _default_key_id = key_id
+    _save_api_keys()
+    return {"success": True, "message": "已设为默认"}
 
 
 # ── File upload / download ───────────────────────────────────────

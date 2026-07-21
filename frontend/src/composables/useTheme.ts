@@ -1,4 +1,4 @@
-import { ref, watch, onMounted } from "vue";
+import { ref, watch, computed } from "vue";
 
 export type Theme = "light" | "dark";
 
@@ -6,7 +6,6 @@ const STORAGE_KEY = "theme";
 
 // 全局单例状态(跨组件共享)
 const theme = ref<Theme>("light");
-let initialized = false;
 
 function applyTheme(t: Theme) {
   const root = document.documentElement;
@@ -17,27 +16,27 @@ function applyTheme(t: Theme) {
   }
 }
 
-function init() {
-  if (initialized) return;
-  initialized = true;
-
-  // 读取已应用的状态(index.html 防闪烁脚本已先设过 class)
-  const isDark = document.documentElement.classList.contains("dark");
-  theme.value = isDark ? "dark" : "light";
-
-  // 持久化监听
-  watch(theme, (t) => {
-    applyTheme(t);
-    try {
-      localStorage.setItem(STORAGE_KEY, t);
-    } catch (e) {
-      /* localStorage 不可用时忽略 */
-    }
-  });
+// 立即初始化（模块加载时执行）
+const saved = localStorage.getItem(STORAGE_KEY);
+if (saved === "dark" || saved === "light") {
+  theme.value = saved;
+} else {
+  theme.value = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
+applyTheme(theme.value);
+
+// 监听变化并持久化
+watch(theme, (t) => {
+  applyTheme(t);
+  try {
+    localStorage.setItem(STORAGE_KEY, t);
+  } catch {
+    /* ignore */
+  }
+});
 
 export function useTheme() {
-  onMounted(init);
+  const isDark = computed(() => theme.value === "dark");
 
   function toggle() {
     theme.value = theme.value === "dark" ? "light" : "dark";
@@ -47,5 +46,5 @@ export function useTheme() {
     theme.value = t;
   }
 
-  return { theme, toggle, setTheme };
+  return { theme, isDark, toggle, setTheme };
 }

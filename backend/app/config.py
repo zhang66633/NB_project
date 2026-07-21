@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     default_temperature: float = 0.3
     default_max_tokens: int = 8192
 
+    # ---- DeepSeek Proxy ----
+    deepseek_base_url: str = "https://api.deepseek.com"
+
     # ---- Redis ----
     redis_url: str = "redis://localhost:6379/0"
 
@@ -87,7 +90,16 @@ class Settings(BaseSettings):
 
         provider: Literal["anthropic", "openai"] = "anthropic"
         api_key = self.anthropic_api_key
-        if "gpt" in model.lower() or "o1" in model.lower() or "o3" in model.lower():
+        base_url: Optional[str] = None
+
+        if "claude" in model.lower():
+            provider = "anthropic"
+            api_key = self.anthropic_api_key
+        elif "deepseek" in model.lower():
+            provider = "openai"
+            api_key = self.openai_api_key
+            base_url = getattr(self, "deepseek_base_url", "https://api.deepseek.com")
+        elif "gpt" in model.lower() or "o1" in model.lower() or "o3" in model.lower():
             provider = "openai"
             api_key = self.openai_api_key
 
@@ -95,6 +107,7 @@ class Settings(BaseSettings):
             provider=provider,
             model=model,
             api_key=api_key,
+            base_url=base_url,
             temperature=self.default_temperature,
             max_tokens=self.default_max_tokens,
         )

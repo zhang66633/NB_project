@@ -4,46 +4,49 @@ Uses the provider abstraction layer for clean separation of
 API-specific instantiation logic.
 """
 
-import os
-
 from langchain_core.language_models import BaseChatModel
 
-from app.config import get_settings
+from app.config import get_settings, LLMConfig
 from .providers import get_provider
+
+
+def get_active_api_key() -> dict | None:
+    """获取当前活动的 API Key（优先默认 key，否则返回第一个）。"""
+    try:
+        from app.api.router import get_active_api_key as _get_key
+        return _get_key()
+    except Exception:
+        return None
 
 
 class LLMFactory:
     """为每个 agent 角色创建独立配置的 LLM 实例。"""
 
     @staticmethod
-    def create(agent_role: str) -> BaseChatModel:
+    def create(agent_role: str, api_key_config: dict | None = None) -> BaseChatModel:
         settings = get_settings()
 
-        # 获取 agent 对应的模型名
-        model_attr = f"{agent_role}_model"
-        model = getattr(settings, model_attr, None)
+        llm_config = settings.get_llm_config(agent_role)
 
-        # 回退: 尝试从环境变量读取统一模型名
-        if not model:
-            model = os.getenv("DEFAULT_MODEL", "deepseek-chat")
+        active_key = api_key_config or get_active_api_key()
 
-        # 获取 API Key
-        api_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
+        if active_key:
+            llm_config.api_key = active_key.get("key", llm_config.api_key)
+            llm_config.model = active_key.get("model_name", llm_config.model)
+            llm_config.provider = active_key.get("provider", llm_config.provider)
+            if active_key.get("provider") == "deepseek":
+                llm_config.base_url = getattr(settings, "deepseek_base_url", "https://api.deepseek.com")
 
-        # If model looks Anthropic, use Anthropic key
-        if "claude" in model.lower():
-            api_key = os.getenv("ANTHROPIC_API_KEY") or api_key
-
-        # 委托给 provider
-        provider = get_provider(model)
+        provider = get_provider(llm_config.model)
         return provider.create(
-            model=model,
-            api_key=api_key,
-            temperature=settings.default_temperature,
-            max_tokens=settings.default_max_tokens,
+            model=llm_config.model,
+            api_key=llm_config.api_key,
+            temperature=llm_config.temperature,
+            max_tokens=llm_config.max_tokens,
+            base_url=llm_config.base_url,
         )
 
 
-def get_llm(agent_role: str) -> BaseChatModel:
+def get_llm(agent_role: str, api_key_config: dict | None = None) -> BaseChatModel:
     """快捷获取 LLM 实例。"""
-    return LLMFactory.create(agent_role)
+    return LLMFactory.create(agent_role, api_key_config)

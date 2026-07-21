@@ -1,69 +1,137 @@
 <template>
   <aside class="flex flex-col border-r bg-background h-screen sticky top-0 w-64 shrink-0">
-    <!-- 品牌 -->
-    <div class="flex h-14 items-center justify-between border-b px-5 shrink-0">
+    <div class="flex h-14 items-center border-b px-5 shrink-0">
       <div class="flex items-center gap-2.5">
         <div class="flex h-7 w-7 items-center justify-center border border-border rounded-sm">
           <span class="font-display text-sm font-medium leading-none">M</span>
         </div>
         <span class="font-display text-sm font-medium tracking-tight">{{ APP_NAME }}</span>
       </div>
-      <button
-        class="flex h-7 w-7 items-center justify-center rounded-sm hover:bg-accent transition-colors"
-        title="新对话"
-        @click="newChat"
-      >
-        <Plus class="h-4 w-4 text-muted-foreground" />
-      </button>
     </div>
 
-    <!-- 对话列表 -->
-    <div v-if="sessionList.length > 0" class="border-b py-2 flex-1 overflow-y-auto">
-      <p class="px-5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">最近对话</p>
-      <div
-        v-for="s in sessionList"
-        :key="s.id"
-        class="group relative flex w-full items-center gap-2 py-1.5 pr-2 pl-5 text-sm cursor-pointer transition-colors"
-        :class="s.id === chatSession.activeSessionId ? 'text-foreground bg-accent/50' : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'"
-        @click="switchTo(s)"
-      >
-        <span
-          class="font-mono text-[9px] w-7 shrink-0"
-          :class="s.type === 'task' ? 'text-amber-600/70' : s.mode === 'teach' ? 'text-green-600/70' : 'text-blue-600/70'"
+    <div v-if="sessionList.length > 0" class="border-b py-2 flex-1 overflow-y-auto min-h-0">
+      <p class="px-5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">{{ sessionListTitle }}</p>
+      <TransitionGroup name="session-list">
+        <div
+          v-for="s in sessionList"
+          :key="s.id"
+          class="group relative flex w-full items-center gap-2 py-1.5 pr-2 pl-5 text-sm cursor-pointer transition-all duration-200"
+          :class="isActiveSession(s.id) ? 'text-foreground bg-accent/50' : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'"
+          @click="switchTo(s.id)"
         >
-          {{ s.type === 'task' ? '任务' : s.mode === 'teach' ? '教学' : '方案' }}
-        </span>
-        <span class="truncate flex-1 text-xs">{{ s.title }}</span>
+          <Transition name="indicator">
+            <div
+              v-if="isActiveSession(s.id)"
+              class="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 bg-primary rounded-r"
+            />
+          </Transition>
+          <template v-if="editingId === s.id">
+            <input
+              v-model="editingTitle"
+              class="flex-1 text-xs bg-background border border-primary/30 rounded px-1.5 py-0.5 outline-none"
+              @keyup.enter="confirmRename"
+              @keyup.esc="cancelRename"
+              @click.stop
+              autofocus
+            />
+          </template>
+          <template v-else>
+            <span class="truncate flex-1 text-xs">{{ s.title }}</span>
+          </template>
+          <div class="flex items-center gap-1 shrink-0">
+            <button
+              v-if="editingId !== s.id"
+              class="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm opacity-0 group-hover:opacity-100 hover:bg-primary/10 hover:text-primary transition-all"
+              @click.stop="startRename(s.id, s.title)"
+              title="重命名"
+            >
+              <Pencil class="h-3 w-3" />
+            </button>
+            <button
+              v-if="editingId === s.id"
+              class="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm opacity-100 hover:bg-primary/10 hover:text-primary transition-all"
+              @click.stop="confirmRename"
+              title="确认"
+            >
+              <Check class="h-3 w-3" />
+            </button>
+            <button
+              class="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition-all"
+              @click.stop="removeSession(s.id)"
+              title="删除"
+            >
+              <X class="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+      </TransitionGroup>
+    </div>
+
+    <div class="border-b py-2 shrink-0">
+      <div class="flex items-center justify-between px-5 py-1.5">
+        <p class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">归档</p>
+        <span class="font-mono text-[9px] text-muted-foreground/40">{{ archiveCount }}</span>
+      </div>
+      <div class="flex items-center gap-0.5 px-4 pb-1.5">
         <button
-          class="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition-all"
-          @click.stop="removeSession(s.id)"
-          title="删除对话"
+          v-for="tab in archiveTabs"
+          :key="tab.value"
+          class="font-mono text-[10px] px-2.5 py-1 rounded transition-colors"
+          :class="activeArchiveTab === tab.value
+            ? 'bg-accent text-foreground'
+            : 'text-muted-foreground/60 hover:text-muted-foreground'"
+          @click="activeArchiveTab = tab.value"
         >
-          <X class="h-3 w-3" />
+          {{ tab.label }}
         </button>
+      </div>
+      <div class="overflow-y-auto" style="max-height: 200px;">
+        <div v-if="currentArchiveList.length === 0" class="px-5 py-3">
+          <p class="text-[10px] text-muted-foreground/50 font-mono">暂无归档</p>
+        </div>
+        <div
+          v-for="item in currentArchiveList"
+          :key="item.id"
+          class="group relative flex w-full items-center gap-2 py-1.5 pr-2 pl-5 text-sm cursor-pointer transition-all duration-200"
+          :class="isActiveArchive(item.id) ? 'text-foreground bg-accent/50' : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'"
+          @click="openArchive(item.id)"
+        >
+          <Transition name="indicator">
+            <div
+              v-if="isActiveArchive(item.id)"
+              class="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 bg-primary rounded-r"
+            />
+          </Transition>
+          <span class="truncate flex-1 text-xs">{{ item.title }}</span>
+          <button
+            class="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition-all"
+            @click.stop="archiveStore.deleteArchive(item.id)"
+            title="删除归档"
+          >
+            <X class="h-3 w-3" />
+          </button>
+        </div>
       </div>
     </div>
 
-    <!-- 导航 -->
     <nav :class="sessionList.length > 0 ? 'py-3 shrink-0' : 'flex-1 py-6'">
       <button
         v-for="(item, i) in navItems"
         :key="item.path"
         class="group relative flex w-full items-center gap-3 py-2 pr-4 pl-5 text-sm transition-colors"
-        :class="isActive(item.path) ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
+        :class="isNavActive(item.path) ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
         @click="navigate(item.path)"
       >
         <span
-          v-if="isActive(item.path)"
+          v-if="isNavActive(item.path)"
           class="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-px bg-primary"
           aria-hidden="true"
         />
         <span class="font-mono text-[10px] text-muted-foreground/70 w-5 shrink-0">§{{ i + 1 }}</span>
-        <span :class="isActive(item.path) ? 'font-display font-medium' : ''">{{ item.label }}</span>
+        <span :class="isNavActive(item.path) ? 'font-display font-medium' : ''">{{ item.label }}</span>
       </button>
     </nav>
 
-    <!-- 底部版本切换 -->
     <div class="border-t px-3 py-3 shrink-0">
       <VersionSwitcher />
     </div>
@@ -71,48 +139,148 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { ref, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { Plus, X } from "lucide-vue-next";
+import { X, Pencil, Check } from "lucide-vue-next";
 import { APP_NAME } from "@/utils/const";
 import { navItems } from "@/config/navItems";
 import VersionSwitcher from "@/components/VersionSwitcher.vue";
-import { useChatSessionStore } from "@/stores/chatSession";
+import { useChatSessionStore, type SessionMode } from "@/stores/chatSession";
+import { useArchiveStore } from "@/stores/archive";
 
 const router = useRouter();
 const route = useRoute();
 const chatSession = useChatSessionStore();
+const archiveStore = useArchiveStore();
 
-const sessionList = computed(() => chatSession.sortedSessions.slice(0, 20));
+const editingId = ref<string | null>(null);
+const editingTitle = ref("");
 
-function isActive(path: string): boolean {
+const currentMode = computed<SessionMode>(() => {
+  if (route.path.startsWith("/teach")) return "teach";
+  if (route.path.startsWith("/solution")) return "solution";
+  return "chat";
+});
+
+const sessionListTitle = computed(() => {
+  const titles: Record<SessionMode, string> = {
+    chat: "最近对话",
+    teach: "最近学习",
+    solution: "最近方案",
+  };
+  return titles[currentMode.value];
+});
+
+const sessionList = computed(() => {
+  const sorted = chatSession.getSortedSessions(currentMode.value).value;
+  return sorted.slice(0, 20);
+});
+
+function isActiveSession(id: string): boolean {
+  return chatSession.getActiveId(currentMode.value).value === id;
+}
+
+function switchTo(id: string) {
+  chatSession.switchSession(currentMode.value, id);
+}
+
+function removeSession(id: string) {
+  const wasActive = isActiveSession(id);
+  chatSession.deleteSession(currentMode.value, id);
+  if (wasActive) {
+    chatSession.clearActive(currentMode.value);
+  }
+}
+
+function startRename(id: string, title: string) {
+  editingId.value = id;
+  editingTitle.value = title;
+}
+
+function confirmRename() {
+  if (editingId.value) {
+    chatSession.renameSession(currentMode.value, editingId.value, editingTitle.value);
+    editingId.value = null;
+    editingTitle.value = "";
+  }
+}
+
+function cancelRename() {
+  editingId.value = null;
+  editingTitle.value = "";
+}
+
+const activeArchiveTab = ref<"solution" | "teaching">("solution");
+const archiveTabs = [
+  { label: "方案", value: "solution" as const },
+  { label: "教学", value: "teaching" as const },
+];
+
+const archiveCount = computed(() => archiveStore.sortedItems.length);
+
+const currentArchiveList = computed(() =>
+  activeArchiveTab.value === "solution"
+    ? archiveStore.solutionItems.slice(0, 20)
+    : archiveStore.teachingItems.slice(0, 20),
+);
+
+function isActiveArchive(id: string): boolean {
+  return route.path === `/archive/${id}`;
+}
+
+function openArchive(id: string) {
+  router.push(`/archive/${id}`);
+}
+
+function isNavActive(path: string): boolean {
   if (path === "/") return route.path === "/";
-  if (route.path.startsWith("/chat")) return path.startsWith("/chat");
-  if (route.path.startsWith("/task")) return path.startsWith("/task");
-  if (route.path.startsWith("/knowledge")) return path.startsWith("/knowledge");
-  if (route.path.startsWith("/example")) return path.startsWith("/example");
+  if (path === "/chat") return route.path.startsWith("/chat");
+  if (path === "/teach") return route.path.startsWith("/teach");
+  if (path === "/solution") return route.path.startsWith("/solution");
+  if (path.startsWith("/knowledge")) return route.path.startsWith("/knowledge");
+  if (path.startsWith("/example")) return route.path.startsWith("/example");
+  if (path.startsWith("/archive")) return route.path.startsWith("/archive");
   return false;
 }
 
 function navigate(path: string) {
   router.push(path);
 }
-
-function newChat() {
-  chatSession.clearActive();
-  router.push("/chat");
-}
-
-function switchTo(s: { id: string; type: string }) {
-  chatSession.switchSession(s.id);
-  if (s.type === "task") {
-    router.push(`/task/${s.id}`);
-  } else {
-    router.push("/chat");
-  }
-}
-
-function removeSession(id: string) {
-  chatSession.deleteSession(id);
-}
 </script>
+
+<style scoped>
+.session-list-move {
+  transition: transform 0.3s ease;
+}
+
+.session-list-enter-active,
+.session-list-leave-active {
+  transition: opacity 0.25s ease, height 0.3s ease, margin 0.3s ease, padding 0.3s ease;
+}
+
+.session-list-enter-from {
+  opacity: 0;
+  transform: translateX(-8px);
+}
+
+.session-list-leave-to {
+  opacity: 0;
+  height: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  overflow: hidden;
+}
+
+.indicator-enter-active,
+.indicator-leave-active {
+  transition: all 0.2s ease;
+}
+
+.indicator-enter-from,
+.indicator-leave-to {
+  opacity: 0;
+  transform: translateX(-4px) scaleY(0.5);
+}
+</style>

@@ -1,4 +1,4 @@
-import { Home, MessageSquare, GraduationCap, FileText, Library, BookOpen } from "lucide-vue-next";
+import { Home, MessageSquare, GraduationCap, FileText, Library, BookOpen, Key } from "lucide-vue-next";
 
 export interface NavItem {
   label: string;
@@ -13,4 +13,5 @@ export const navItems: NavItem[] = [
   { label: "方案", path: "/solution", icon: FileText },
   { label: "知识库", path: "/knowledge", icon: Library },
   { label: "例题", path: "/example/1", icon: BookOpen },
+  { label: "API Keys", path: "/apikeys", icon: Key },
 ];

@@ -111,6 +111,14 @@ async def _event_stream(req: ChatRequest):
 @chat_router.post("/chat")
 async def chat(req: ChatRequest):
     """自由问答 SSE 流式接口。"""
+    # 检查是否有可用的 API Key
+    from .router import get_active_api_key
+    active_key = get_active_api_key()
+    if not active_key:
+        async def no_key():
+            yield f"data: {json.dumps({'error': '请先在 API Keys 页面配置你的 API Key，然后再发送消息。'}, ensure_ascii=False)}\n\n"
+        return StreamingResponse(no_key(), media_type="text/event-stream")
+
     if not req.messages:
         async def empty():
             yield f"data: {json.dumps({'error': '消息不能为空'}, ensure_ascii=False)}\n\n"

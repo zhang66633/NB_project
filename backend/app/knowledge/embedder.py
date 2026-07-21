@@ -221,6 +221,7 @@ class KBEmbedder:
         docs += self._cards_to_documents()
         docs += self._papers_to_documents()
         docs += self._templates_to_documents()
+        docs += self._problems_to_documents()
         return docs
 
     def _yaml_file_to_documents(self, yaml_path: Path) -> List[Document]:
@@ -251,6 +252,10 @@ class KBEmbedder:
             from .schemas import Template
             tpl = Template(**data["template"])
             return [self._template_to_document(tpl)]
+        elif "problem" in data:
+            from .schemas import Problem
+            prob = Problem(**data["problem"])
+            return [self._problem_to_document(prob)]
 
         return []
 
@@ -300,6 +305,16 @@ class KBEmbedder:
             docs.append(doc)
         return docs
 
+    def _problems_to_documents(self) -> List[Document]:
+        docs = []
+        for prob in self.loader.load_all_problems():
+            doc = self._problem_to_document(prob)
+            source = self._find_source_file("problems", prob.id)
+            if source:
+                doc.metadata["_source_file"] = str(source)
+            docs.append(doc)
+        return docs
+
     def _find_source_file(self, subdir: str, doc_id: str) -> Optional[Path]:
         """Find the YAML file that produced a given document ID."""
         search_dir = self.kb_root / subdir
@@ -312,7 +327,7 @@ class KBEmbedder:
                 if not data:
                     continue
                 # Try all known top-level keys
-                for key in ("method_card", "paper", "template"):
+                for key in ("method_card", "paper", "template", "problem"):
                     if key in data and isinstance(data[key], dict):
                         if data[key].get("id") == doc_id:
                             return yf
@@ -335,6 +350,11 @@ class KBEmbedder:
     def _template_to_document(tpl) -> Document:
         from .retriever import HybridRetriever
         return HybridRetriever._template_to_document(tpl)
+
+    @staticmethod
+    def _problem_to_document(prob) -> Document:
+        from .retriever import HybridRetriever
+        return HybridRetriever._problem_to_document(prob)
 
     # ── hash management ─────────────────────────────────────────────
 

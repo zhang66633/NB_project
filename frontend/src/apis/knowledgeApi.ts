@@ -5,7 +5,7 @@ import request from "@/utils/request";
 
 export interface SearchResult {
   id: string;
-  type: "method_card" | "paper" | "template";
+  type: "method_card" | "paper" | "template" | "problem";
   name: string;
   title: string;
   snippet: string;
@@ -22,6 +22,7 @@ export interface KBStats {
   methods_count: number;
   papers_count: number;
   templates_count: number;
+  problems_count: number;
   total: number;
 }
 
@@ -51,6 +52,7 @@ export interface PaperSummary {
   title: string;
   tags: Record<string, string[]>;
   quality_rating: number;
+  problem_ref: string;
 }
 
 export interface PaperDetail extends PaperSummary {
@@ -80,6 +82,32 @@ export interface TemplateDetail {
   name: string;
   applicable_to: string[];
   steps: { step: number; name: string; guiding_questions: string[]; decision_tree: string[]; checklist: string[] }[];
+}
+
+export interface ProblemSummary {
+  id: string;
+  year: number;
+  competition: string;
+  problem_id: string;
+  title: string;
+  tags: Record<string, string[]>;
+  linked_papers_count: number;
+}
+
+export interface ProblemDetail {
+  id: string;
+  year: number;
+  competition: string;
+  problem_id: string;
+  title: string;
+  full_text: string;
+  background: string;
+  objectives: string[];
+  data_description: string;
+  deliverables: string[];
+  tags: Record<string, string[]>;
+  linked_papers: string[];
+  source_url: string;
 }
 
 // ── API functions ──────────────────────────────────────────────────
@@ -168,12 +196,14 @@ export function uploadKnowledge(params: {
   file?: File;
   kb_type: string;
   name?: string;
+  problem_ref?: string;
 }) {
   const formData = new FormData();
   if (params.text) formData.append("text", params.text);
   if (params.file) formData.append("file", params.file);
   formData.append("kb_type", params.kb_type);
   if (params.name) formData.append("name", params.name);
+  if (params.problem_ref) formData.append("problem_ref", params.problem_ref);
   return request.post<{ job_id: string; status: string }>(
     "/knowledge/upload",
     formData,
@@ -241,4 +271,45 @@ export function getPaperRaw(paperId: string) {
 }
 export function getTemplateRaw(tplId: string) {
   return request.get<{ entry_id: string; raw_text: string }>(`/knowledge/templates/${tplId}/raw`);
+}
+
+// ── problems ──────────────────────────────────────────────────────
+
+/** List problems. */
+export function listProblems(params?: {
+  competition?: string;
+  year?: number;
+  problem_type?: string;
+}) {
+  return request.get<ProblemSummary[]>("/knowledge/problems", { params });
+}
+
+/** Get a single problem by ID. */
+export function getProblem(problemId: string) {
+  return request.get<ProblemDetail>(`/knowledge/problems/${problemId}`);
+}
+
+/** Get papers linked to a problem. */
+export function getProblemPapers(problemId: string) {
+  return request.get<PaperSummary[]>(`/knowledge/problems/${problemId}/papers`);
+}
+
+/** Get problem raw text. */
+export function getProblemRaw(problemId: string) {
+  return request.get<{ entry_id: string; raw_text: string }>(`/knowledge/problems/${problemId}/raw`);
+}
+
+/** Create problem. */
+export function createProblem(data: Record<string, unknown>) {
+  return request.post<CrudResponse>("/knowledge/problems", data);
+}
+
+/** Update problem. */
+export function updateProblem(problemId: string, data: Record<string, unknown>) {
+  return request.put<CrudResponse>(`/knowledge/problems/${problemId}`, data);
+}
+
+/** Delete problem. */
+export function deleteProblem(problemId: string) {
+  return request.delete<CrudResponse>(`/knowledge/problems/${problemId}`);
 }

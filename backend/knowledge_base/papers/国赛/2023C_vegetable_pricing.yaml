@@ -3,6 +3,7 @@ paper:
   year: 2023
   competition: "国赛"
   problem_id: "C"
+  problem_ref: "prob_001"
   title: "蔬菜类商品的自动定价与补货决策"
 
   tags:

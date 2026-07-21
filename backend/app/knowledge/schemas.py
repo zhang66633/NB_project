@@ -86,6 +86,8 @@ class Paper(BaseModel):
     problem_id: str
     title: str
     tags: dict = Field(default_factory=dict)
+    # 题目关联
+    problem_ref: str = ""               # 关联的题目 ID，如 "prob_001"
     # 深度拆解字段（新增）
     problem_context: str = ""           # 问题背景全文（500-1000字）
     methodology_chain: List[str] = Field(default_factory=list)  # 方法链路 ["数据清洗→特征工程→ARIMA预测→线性规划优化"]
@@ -101,6 +103,30 @@ class Paper(BaseModel):
     evaluation: PaperEvaluation = Field(default_factory=PaperEvaluation)
     source: str = ""
     quality_rating: int = Field(ge=1, le=5, default=3)
+
+
+class Problem(BaseModel):
+    """竞赛真题 — 原始问题描述，与论文解耦存储。
+
+    1:N 关系：一个题目可以有多篇模范论文从不同角度求解。
+    通过 (year, competition, problem_id) 自然键与 Paper 关联。
+    """
+    id: str = Field(pattern=r"^prob_\d+$")
+    year: int
+    competition: str               # 国赛 / 美赛 / 研赛
+    problem_id: str                # A / B / C / D / E
+    title: str                     # 题目名称
+    full_text: str = ""            # 完整题目原文 (2000-5000 chars)
+    background: str = ""           # 问题背景简述
+    objectives: List[str] = Field(default_factory=list)   # 求解目标列表
+    data_description: str = ""     # 提供的附件数据说明
+    deliverables: List[str] = Field(default_factory=list) # 需要提交的内容
+    tags: dict = Field(default_factory=lambda: {
+        "problem_type": [],
+        "difficulty": "medium",
+    })
+    linked_papers: List[str] = Field(default_factory=list)  # 关联的论文 ID
+    source_url: str = ""           # 来源链接
 
 
 class TemplateStep(BaseModel):

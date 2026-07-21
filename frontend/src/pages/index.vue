@@ -11,6 +11,23 @@
       </div>
     </div>
 
+    <!-- API Key not configured banner -->
+    <div v-if="noApiKey" class="mx-auto max-w-4xl px-6 sm:px-10 pt-4">
+      <div class="flex items-start gap-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3">
+        <Key class="h-5 w-5 shrink-0 text-blue-600 mt-0.5" />
+        <div class="flex-1">
+          <p class="text-sm text-blue-800 font-medium">尚未配置 API Key</p>
+          <p class="text-xs text-blue-700 mt-0.5">
+            你需要自己的 DeepSeek/OpenAI API Key 才能使用智能体。
+            <router-link to="/apikeys" class="underline font-medium hover:text-blue-900">前往配置 →</router-link>
+          </p>
+        </div>
+        <button class="shrink-0 text-blue-500 hover:text-blue-700 transition-colors" @click="dismissApiKeyHint">
+          <X class="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+
     <div class="mx-auto max-w-4xl px-6 sm:px-10">
 
       <!-- 标题区:大留白,衬线大标题 + italic 副标题,左对齐 -->
@@ -155,8 +172,9 @@ s.t.  Σᵢ xᵢⱼ = Dⱼ,  ∀j ∈ J
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { ArrowRight, ShieldAlert, X } from "lucide-vue-next";
+import { ArrowRight, ShieldAlert, X, Key } from "lucide-vue-next";
 import { getKBStats, type KBStats } from "@/apis/knowledgeApi";
+import { getApiKeys } from "@/apis/apiKeyApi";
 
 const router = useRouter();
 const route = useRoute();
@@ -166,6 +184,9 @@ watch(() => route.query.denied, (val) => {
   if (val === "knowledge") deniedMessage.value = "知识库仅对项目贡献者开放。请联系 zhang66633 或 shu639 获取权限。";
 }, { immediate: true });
 function dismissDenied() { deniedMessage.value = ""; router.replace({ query: {} }); }
+
+const noApiKey = ref(false);
+function dismissApiKeyHint() { noApiKey.value = false; }
 
 const statsReady = ref(false);
 
@@ -186,6 +207,7 @@ function enterChat(mode: "teach" | "execute") {
 }
 
 onMounted(async () => {
+  // 知识库统计
   try {
     const res = await getKBStats();
     const data = res.data;
@@ -197,6 +219,15 @@ onMounted(async () => {
     statsReady.value = true;
   } catch {
     statsReady.value = false;
+  }
+
+  // API Key 检查
+  try {
+    const keys: any = await getApiKeys();
+    const list = keys.data || keys || [];
+    noApiKey.value = list.length === 0;
+  } catch {
+    noApiKey.value = true;
   }
 });
 </script>

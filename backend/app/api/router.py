@@ -124,6 +124,15 @@ async def health_check():
 @api_router.post("/tasks", response_model=TaskResponse)
 async def create_task(req: CreateTaskRequest, background_tasks: BackgroundTasks):
     """创建建模任务，后台启动编排器。"""
+    # 检查是否有可用的 API Key
+    active_key = get_active_api_key()
+    if not active_key:
+        raise HTTPException(
+            status_code=400,
+            detail="请先在 API Keys 页面配置你的 API Key，"
+                   "然后再提交任务。点击导航栏「API Keys」进入配置页面。",
+        )
+
     session_mgr = get_session_manager()
     task = session_mgr.create(problem=req.problem, mode=req.mode)
     task_id = task["task_id"]

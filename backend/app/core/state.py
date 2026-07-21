@@ -27,6 +27,7 @@ class AgentState(TypedDict):
     kb_methods: List[dict]
     kb_papers: List[dict]
     kb_templates: List[dict]
+    kb_problems: List[dict]
 
     # --- 动态执行计划 ---
     execution_plan: List[str]       # 例如: ["analysis", "modeling", "solving", "verification", "writing"]
@@ -67,6 +68,7 @@ def create_initial_state(
         kb_methods=[],
         kb_papers=[],
         kb_templates=[],
+        kb_problems=[],
         execution_plan=[],
         current_step_index=-1,
         retry_count=0,

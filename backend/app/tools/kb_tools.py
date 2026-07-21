@@ -36,7 +36,8 @@ def create_kb_tools(
     from ..knowledge.loader import KnowledgeBaseLoader
 
     _kb_loader = KnowledgeBaseLoader(kb_root)
-    return [search_method_cards, search_similar_papers, get_analysis_framework]
+    return [search_method_cards, search_similar_papers,
+            get_analysis_framework, search_problems]
 
 
 # ── helper: format a Document for LLM consumption ─────────────────────
@@ -49,6 +50,7 @@ def _format_doc(doc, idx: int = 0) -> str:
         "method_card": "方法卡片",
         "paper": "真题论文",
         "template": "分析框架",
+        "problem": "竞赛真题",
     }.get(meta.get("type", ""), "文档")
 
     score = meta.get("score")
@@ -172,3 +174,42 @@ def get_analysis_framework(problem_type: str) -> str:
         return _format_docs(templates)
     except Exception as e:
         return f"（获取分析框架时出错: {e}）"
+
+
+# ── Tool 4: search_problems ──────────────────────────────────────────
+
+
+@tool
+def search_problems(query: str, competition: str = "") -> str:
+    """搜索历年数学建模竞赛真题库。
+
+    输入问题描述，返回最匹配的竞赛真题，包括完整题目原文、求解目标、
+    数据说明等。可以帮助了解类似问题的完整背景。
+
+    Args:
+        query: 问题描述或关键词
+        competition: 可选，竞赛过滤 (国赛/美赛/研赛)
+    """
+    if _retriever is None:
+        return "（知识库未初始化，请联系管理员）"
+
+    try:
+        metadata_filter = {"type": "problem"}
+        docs = _retriever._get_relevant_documents(
+            query,
+            metadata_filter=metadata_filter,
+            k=3,
+            use_mmr=True,
+            mmr_lambda=0.7,
+        )
+
+        # Filter by competition if specified
+        if competition and docs:
+            docs = [
+                d for d in docs
+                if d.metadata.get("competition") == competition
+            ]
+
+        return _format_docs(docs)
+    except Exception as e:
+        return f"（检索竞赛真题时出错: {e}）"

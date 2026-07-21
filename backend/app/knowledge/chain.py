@@ -44,6 +44,7 @@ def format_docs(docs: List[Document]) -> str:
         "method_card": "方法卡片",
         "paper": "真题论文",
         "template": "分析框架",
+        "problem": "竞赛真题",
     }
 
     parts: List[str] = []
@@ -66,12 +67,20 @@ def format_kb_context(
     kb_methods: Optional[List[dict]] = None,
     kb_papers: Optional[List[dict]] = None,
     kb_templates: Optional[List[dict]] = None,
+    kb_problems: Optional[List[dict]] = None,
 ) -> str:
     """Build a combined KB context string from AgentState fields.
 
     Use this inside LangGraph nodes to inject KB results into prompts.
     """
     sections: List[str] = []
+
+    if kb_problems:
+        problems_text = "\n".join(
+            f"- **{p.get('title', '?')}** [{p.get('id', '?')}] ({p.get('year', '?')} {p.get('competition', '?')} {p.get('problem_id', '?')}): {p.get('page_content', '')[:200]}"
+            for p in kb_problems
+        )
+        sections.append(f"## 相关竞赛真题\n{problems_text}")
 
     if kb_methods:
         methods_text = "\n".join(
@@ -85,7 +94,7 @@ def format_kb_context(
             f"- **{p.get('title', '?')}** [{p.get('id', '?')}] ({p.get('year', '?')} {p.get('competition', '?')}): {p.get('page_content', '')[:200]}"
             for p in kb_papers
         )
-        sections.append(f"## 相似真题\n{papers_text}")
+        sections.append(f"## 相似真题论文\n{papers_text}")
 
     if kb_templates:
         templates_text = "\n".join(

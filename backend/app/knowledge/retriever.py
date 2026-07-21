@@ -13,7 +13,7 @@ from langchain_core.retrievers import BaseRetriever
 
 from .embedder import KBEmbedder
 from .loader import KnowledgeBaseLoader
-from .schemas import MethodCard, Paper, Template
+from .schemas import MethodCard, Paper, Problem, Template
 
 
 class HybridRetriever(BaseRetriever):
@@ -234,6 +234,13 @@ class HybridRetriever(BaseRetriever):
             doc.metadata["score"] = self.TAG_MATCH_SCORE
             results.append(doc)
 
+        # Problems
+        problems = self.loader.get_problems_by_type(problem_type)
+        for prob in problems[:k]:
+            doc = self._problem_to_document(prob)
+            doc.metadata["score"] = self.TAG_MATCH_SCORE
+            results.append(doc)
+
         return results
 
     # ── document builders (rich page_content for tag results) ──────────
@@ -327,6 +334,39 @@ class HybridRetriever(BaseRetriever):
                 "id": tpl.id,
                 "name": tpl.name,
                 "applicable_to": tpl.applicable_to,
+            },
+        )
+
+    @staticmethod
+    def _problem_to_document(prob: Problem) -> Document:
+        parts = [
+            f"赛题: {prob.title}",
+            f"年份: {prob.year} | 竞赛: {prob.competition} | 题号: {prob.problem_id}",
+            f"问题类型: {prob.tags.get('problem_type', [])}",
+        ]
+        if prob.background:
+            parts.append(f"背景: {prob.background}")
+        if prob.objectives:
+            parts.append("求解目标:")
+            parts.extend(f"  - {o}" for o in prob.objectives)
+        if prob.data_description:
+            parts.append(f"数据描述: {prob.data_description}")
+        if prob.deliverables:
+            parts.append("提交要求:")
+            parts.extend(f"  - {d}" for d in prob.deliverables)
+        if prob.full_text:
+            parts.append(f"完整题目: {prob.full_text[:1500]}")
+
+        return Document(
+            page_content="\n".join(parts),
+            metadata={
+                "type": "problem",
+                "id": prob.id,
+                "year": prob.year,
+                "competition": prob.competition,
+                "problem_id": prob.problem_id,
+                "title": prob.title,
+                "linked_papers": prob.linked_papers,
             },
         )
 

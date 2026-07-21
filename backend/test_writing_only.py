@@ -1,8 +1,7 @@
 """单独测试写作 Agent — 生成 LaTeX 论文。"""
 import os, sys
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-os.environ["DEEPSEEK_API_KEY"] = "YOUR_DEEPSEEK_KEY_HERE"
-os.environ["OPENAI_API_KEY"] = "YOUR_DEEPSEEK_KEY_HERE"
+# API Key 从 .env 文件读取，请复制 .env.example 为 .env 并填入你的 Key
 from dotenv import load_dotenv; load_dotenv(override=True)
 
 from app.core.state import create_initial_state

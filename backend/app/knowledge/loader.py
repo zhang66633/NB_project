@@ -5,7 +5,7 @@ from typing import List
 
 import yaml
 
-from .schemas import MethodCard, Paper, Template
+from .schemas import MethodCard, Paper, Problem, Template
 
 
 class KnowledgeBaseLoader:
@@ -16,6 +16,7 @@ class KnowledgeBaseLoader:
         self.methods_dir = self.kb_root / "methods"
         self.papers_dir = self.kb_root / "papers"
         self.templates_dir = self.kb_root / "templates"
+        self.problems_dir = self.kb_root / "problems"
 
     def load_all_methods(self) -> List[MethodCard]:
         """Load all method cards from YAML files."""
@@ -83,3 +84,65 @@ class KnowledgeBaseLoader:
             if problem_type in tpl.applicable_to:
                 results.append(tpl)
         return results
+
+    # ── Problem (竞赛真题) ────────────────────────────────────────────
+
+    def load_all_problems(self) -> List[Problem]:
+        """Load all competition problems from YAML files."""
+        problems = []
+        if not self.problems_dir.exists():
+            return problems
+        for yaml_file in self.problems_dir.rglob("*.yaml"):
+            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
+            if data and "problem" in data:
+                problems.append(Problem(**data["problem"]))
+        return problems
+
+    def get_problem_by_id(self, problem_id: str) -> Problem | None:
+        """Find a specific problem by ID."""
+        for prob in self.load_all_problems():
+            if prob.id == problem_id:
+                return prob
+        return None
+
+    def get_problem_by_key(
+        self, year: int, competition: str, problem_id: str
+    ) -> Problem | None:
+        """Find a problem by its natural key (year, competition, problem_id)."""
+        for prob in self.load_all_problems():
+            if (
+                prob.year == year
+                and prob.competition == competition
+                and prob.problem_id == problem_id
+            ):
+                return prob
+        return None
+
+    def get_problems_by_competition(
+        self, competition: str, year: int | None = None
+    ) -> List[Problem]:
+        """Filter problems by competition, optionally by year."""
+        results = []
+        for prob in self.load_all_problems():
+            if prob.competition != competition:
+                continue
+            if year is not None and prob.year != year:
+                continue
+            results.append(prob)
+        return results
+
+    def get_problems_by_type(self, problem_type: str) -> List[Problem]:
+        """Filter problems by problem_type tag."""
+        return [
+            p
+            for p in self.load_all_problems()
+            if problem_type in p.tags.get("problem_type", [])
+        ]
+
+    def get_papers_by_problem(self, problem_ref: str) -> List[Paper]:
+        """Find all papers linked to a specific problem."""
+        return [
+            p
+            for p in self.load_all_papers()
+            if p.problem_ref == problem_ref
+        ]

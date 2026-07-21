@@ -123,6 +123,28 @@
         <!-- ==================== TAB 3: 导入知识 ==================== -->
         <div v-if="activeTab === 'import'">
           <div class="rounded-lg border border-border bg-background p-6">
+            <!-- 导入引导提示 -->
+            <div class="rounded-md border border-blue-200 bg-blue-50/50 p-3 mb-5 text-xs leading-relaxed" :class="impType === 'problem' ? 'border-amber-200 bg-amber-50/50' : impType === 'paper' ? 'border-emerald-200 bg-emerald-50/50' : 'border-blue-200 bg-blue-50/50'">
+              <template v-if="impType === 'problem'">
+                <span class="font-medium text-amber-700">📋 导入题目：</span>
+                <span class="text-amber-600">上传竞赛真题原文。系统会提取年份、赛事、题号，作为后续论文关联的唯一标识。建议<strong>先导入题目</strong>，再导入对应论文。</span>
+              </template>
+              <template v-else-if="impType === 'paper'">
+                <span class="font-medium text-emerald-700">📄 导入论文：</span>
+                <span class="text-emerald-600">
+                  <template v-if="lastProblemRef">上传后将<strong>自动关联到 {{ lastProblemRef }}</strong>，无需额外操作。</template>
+                  <template v-else>先导入题目，再从此处追加论文，系统会自动关联。或直接上传，系统根据<strong>年份+赛事+题号</strong>自动匹配。</template>
+                </span>
+              </template>
+              <template v-else-if="impType === 'method'">
+                <span class="font-medium text-blue-700">📐 导入方法：</span>
+                <span class="text-blue-600">上传数学建模方法的描述文本。系统会提取原理、适用条件、代码示例等信息。</span>
+              </template>
+              <template v-else>
+                <span class="font-medium text-blue-700">📏 导入模板：</span>
+                <span class="text-blue-600">上传分析框架描述。系统会提取引导问题、决策树和检查清单。</span>
+              </template>
+            </div>
             <div class="flex items-center gap-x-5 gap-y-2 mb-5 flex-wrap">
               <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">类型</span>
               <button v-for="o in impTypes" :key="o.value"
@@ -171,6 +193,17 @@
                 <button class="flex items-center rounded-md border border-border px-4 py-2 text-sm hover:bg-accent transition-colors" @click="extractPreview = ''; extractError = ''"><RotateCcw class="h-4 w-4 mr-1" />重新提取</button>
               </div>
             </div>
+
+            <!-- 追加论文区域: 题目导入成功后显示 -->
+            <div v-if="lastProblemRef && impType === 'problem'" class="mt-5 pt-5 border-t border-border">
+              <p class="font-mono text-[10px] uppercase tracking-wider text-emerald-600 mb-3">📎 追加关联论文到 {{ lastProblemRef }}</p>
+              <div class="flex gap-2">
+                <button class="flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 hover:bg-emerald-100 transition-colors"
+                  @click="switchToPaperUpload">📄 为此题目追加论文</button>
+                <button class="flex items-center rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-accent transition-colors"
+                  @click="lastProblemRef = ''">清除</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -204,6 +237,8 @@
               <span class="font-mono text-[10px] uppercase tracking-wider border border-border rounded-sm px-2 py-0.5">{{ (detailData.data as any).competition }} {{ (detailData.data as any).year }}·{{ (detailData.data as any).problem_id }}题</span>
               <span class="text-xs text-amber-500">{{ '★'.repeat((detailData.data as any).quality_rating || 3) }}</span>
               <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{{ (detailData.data as any).difficulty_level }}</span>
+              <span v-if="(detailData.data as any).problem_ref" class="font-mono text-[10px] uppercase tracking-wider text-emerald-600 cursor-pointer hover:underline" @click="openProblemFromPaper((detailData.data as any).problem_ref)">🔗 {{ (detailData.data as any).problem_ref }}</span>
+              <span v-else class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/50">⚠ 未关联题目</span>
             </div>
             <!-- 问题背景 -->
             <div v-if="(detailData.data as any).problem_context" class="rounded-md border border-border p-4 bg-muted/20">
@@ -266,6 +301,29 @@
               <ul class="list-disc list-inside text-xs text-muted-foreground mt-1"><li v-for="c in s.checklist" :key="c">{{ c }}</li></ul>
             </div>
           </template>
+          <template v-if="detailData.type === 'problem'">
+            <div class="flex items-center gap-3 flex-wrap mb-3">
+              <span class="font-mono text-[10px] uppercase tracking-wider border border-border rounded-sm px-2 py-0.5">{{ (detailData.data as any).competition }} {{ (detailData.data as any).year }}·{{ (detailData.data as any).problem_id }}题</span>
+              <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{{ (detailData.data as any).tags?.difficulty || 'medium' }}</span>
+              <span class="text-xs text-muted-foreground" v-if="(detailData.data as any).linked_papers?.length">{{ (detailData.data as any).linked_papers.length }}篇关联论文</span>
+            </div>
+            <div v-if="(detailData.data as any).background" class="rounded-md border border-border p-4 bg-muted/20">
+              <h4 class="font-display font-medium text-sm mb-2">问题背景</h4>
+              <p class="text-sm leading-relaxed text-muted-foreground">{{ (detailData.data as any).background }}</p>
+            </div>
+            <div v-if="(detailData.data as any).objectives?.length" class="rounded-md border border-border p-4">
+              <h4 class="font-display font-medium text-sm mb-2">求解目标</h4>
+              <ul class="space-y-1"><li v-for="o in (detailData.data as any).objectives" :key="o" class="text-sm text-muted-foreground flex items-start gap-2"><span class="text-primary shrink-0">→</span>{{ o }}</li></ul>
+            </div>
+            <div v-if="(detailData.data as any).data_description" class="rounded-md border border-border p-4">
+              <h4 class="font-display font-medium text-sm mb-2">数据说明</h4>
+              <p class="text-sm text-muted-foreground leading-relaxed">{{ (detailData.data as any).data_description }}</p>
+            </div>
+            <div v-if="(detailData.data as any).full_text" class="rounded-md border border-border p-4">
+              <h4 class="font-display font-medium text-sm mb-2">完整题目</h4>
+              <p class="text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">{{ (detailData.data as any).full_text }}</p>
+            </div>
+          </template>
         </div>
         <DialogFooter><DialogClose class="rounded-md border border-border px-4 py-2 text-sm hover:bg-accent transition-colors">关闭</DialogClose></DialogFooter>
       </DialogContent>
@@ -298,6 +356,17 @@
           <template v-if="mgrType === 'template'">
             <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">名称</label><input v-model="editForm.name" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
             <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">适用类型(逗号分隔)</label><input v-model="editForm.atStr" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+          </template>
+          <template v-if="mgrType === 'problem'">
+            <div class="grid grid-cols-3 gap-2">
+              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">年份</label><input v-model.number="editForm.year" type="number" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">竞赛</label><input v-model="editForm.competition" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">题号</label><input v-model="editForm.problem_id" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+            </div>
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">标题</label><input v-model="editForm.title" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">问题类型(逗号分隔)</label><input v-model="editForm.tagsStr" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">求解目标(每行一个)</label><textarea v-model="editForm.objStr" rows="3" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">问题背景</label><textarea v-model="editForm.background" rows="3" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
           </template>
         </div>
         <DialogFooter>
@@ -335,12 +404,13 @@ import { useAuthStore } from "@/stores/auth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import {
-  searchKB, getKBStats, reindexKB, getMethod, getPaper, getTemplate,
-  listMethods, listPapers, listTemplates,
+  searchKB, getKBStats, reindexKB, getMethod, getPaper, getTemplate, getProblem,
+  listMethods, listPapers, listTemplates, listProblems,
   uploadKnowledge, getExtractionJob,
   updateMethod, deleteMethod, updatePaper, deletePaper, updateTemplate, deleteTemplate,
-  type SearchResult, type KBStats, type MethodCardSummary, type PaperSummary, type TemplateSummary,
-  getMethodRaw, getPaperRaw, getTemplateRaw,
+  updateProblem, deleteProblem,
+  type SearchResult, type KBStats, type MethodCardSummary, type PaperSummary, type TemplateSummary, type ProblemSummary,
+  getMethodRaw, getPaperRaw, getTemplateRaw, getProblemRaw, getProblemPapers,
 } from "@/apis/knowledgeApi";
 
 // ── auth ─────────────────────────────────────────────────────────
@@ -363,9 +433,9 @@ const searchResults = ref<SearchResult[]>([]);
 const detailItem = ref<SearchResult | null>(null); const detailLoading = ref(false);
 const detailData = ref<{ type: string; data: Record<string, unknown> } | null>(null);
 const detailRawText = ref(""); const detailViewMode = ref<"structured" | "raw">("structured");
-const typeOpts = [{ label: "全部", value: "" }, { label: "方法卡片", value: "method_card" }, { label: "真题论文", value: "paper" }, { label: "框架模板", value: "template" }];
+const typeOpts = [{ label: "全部", value: "" }, { label: "方法卡片", value: "method_card" }, { label: "真题论文", value: "paper" }, { label: "框架模板", value: "template" }, { label: "竞赛真题", value: "problem" }];
 const probOpts = [{ label: "全部", value: "" }, { label: "优化", value: "optimization" }, { label: "预测", value: "prediction" }, { label: "评价", value: "evaluation" }, { label: "统计", value: "statistics" }];
-function typeLabel(t: string) { return { method_card: "方法卡片", paper: "真题论文", template: "框架模板" }[t] || t; }
+function typeLabel(t: string) { return { method_card: "方法卡片", paper: "真题论文", template: "框架模板", problem: "竞赛真题" }[t] || t; }
 function badgeClass(t: string) { return { method_card: "bg-blue-100 text-blue-700", paper: "bg-purple-100 text-purple-700", template: "bg-green-100 text-green-700" }[t] || "bg-muted"; }
 async function doSearch() {
   if (!searchQuery.value.trim()) return;
@@ -380,6 +450,7 @@ async function openDetail(r: SearchResult) {
   try {
     if (r.type === "method_card") { const res = await getMethod(r.id); detailData.value = { type: "method_card", data: res.data as any }; }
     else if (r.type === "paper") { const res = await getPaper(r.id); detailData.value = { type: "paper", data: res.data as any }; }
+    else if (r.type === "problem") { const res = await getProblem(r.id); detailData.value = { type: "problem", data: res.data as any }; }
     else { const res = await getTemplate(r.id); detailData.value = { type: "template", data: res.data as any }; }
   } catch { /* ignore */ }
   finally { detailLoading.value = false; }
@@ -387,18 +458,31 @@ async function openDetail(r: SearchResult) {
   try {
     if (r.type === "method_card") { const rr = await getMethodRaw(r.id); detailRawText.value = rr.data.raw_text; }
     else if (r.type === "paper") { const rr = await getPaperRaw(r.id); detailRawText.value = rr.data.raw_text; }
+    else if (r.type === "problem") { const rr = await getProblemRaw(r.id); detailRawText.value = rr.data.raw_text; }
     else { const rr = await getTemplateRaw(r.id); detailRawText.value = rr.data.raw_text; }
   } catch { /* no raw text available */ }
+}
+async function openProblemFromPaper(problemRef: string) {
+  // 打开关联的题目详情
+  detailItem.value = { id: problemRef, type: "problem", name: "", title: "", snippet: "", score: null } as any;
+  detailLoading.value = true; detailData.value = null; detailRawText.value = ""; detailViewMode.value = "structured";
+  try {
+    const res = await getProblem(problemRef);
+    detailData.value = { type: "problem", data: res.data as any };
+  } catch { /* ignore */ }
+  finally { detailLoading.value = false; }
+  try { const rr = await getProblemRaw(problemRef); detailRawText.value = rr.data.raw_text; } catch { /* */ }
 }
 
 // ── Tab 2: Manage ───────────────────────────────────────────────
 const mgrType = ref("method"); const mgrEntries = ref<any[]>([]); const mgrLoading = ref(false);
-const mgrTypes = [{ label: "方法卡片", value: "method" }, { label: "真题论文", value: "paper" }, { label: "框架模板", value: "template" }];
-const mgrTypeLabel = computed(() => ({ method: "方法", paper: "论文", template: "模板" }[mgrType.value]));
-const mgrBadgeClass = computed(() => ({ method: "bg-blue-100 text-blue-700", paper: "bg-purple-100 text-purple-700", template: "bg-green-100 text-green-700" }[mgrType.value]));
+const mgrTypes = [{ label: "方法卡片", value: "method" }, { label: "真题论文", value: "paper" }, { label: "框架模板", value: "template" }, { label: "竞赛真题", value: "problem" }];
+const mgrTypeLabel = computed(() => ({ method: "方法", paper: "论文", template: "模板", problem: "题目" }[mgrType.value]));
+const mgrBadgeClass = computed(() => ({ method: "bg-blue-100 text-blue-700", paper: "bg-purple-100 text-purple-700", template: "bg-green-100 text-green-700", problem: "bg-amber-100 text-amber-700" }[mgrType.value]));
 function mgrSub(e: any) {
   if (mgrType.value === "method") return (e.category || []).join(", ");
-  if (mgrType.value === "paper") return `${e.year||""} ${e.competition||""} ${e.problem_id||""} ★${e.quality_rating||3}`;
+  if (mgrType.value === "paper") return `${e.year||""} ${e.competition||""} ${e.problem_id||""} ★${e.quality_rating||3}` + (e.problem_ref ? ` · 🔗已关联` : ` · ⚠未关联`);
+  if (mgrType.value === "problem") return `${e.year||""} ${e.competition||""} ${e.problem_id||""} · ${e.linked_papers_count||0}篇论文`;
   return `${e.steps_count||0} 个步骤`;
 }
 async function loadMgrList() {
@@ -406,6 +490,7 @@ async function loadMgrList() {
   try {
     if (mgrType.value === "method") { const r = await listMethods(); mgrEntries.value = r.data as any; }
     else if (mgrType.value === "paper") { const r = await listPapers(); mgrEntries.value = r.data as any; }
+    else if (mgrType.value === "problem") { const r = await listProblems(); mgrEntries.value = r.data as any; }
     else { const r = await listTemplates(); mgrEntries.value = r.data as any; }
   } catch { mgrEntries.value = []; }
   finally { mgrLoading.value = false; }
@@ -419,6 +504,7 @@ function openEdit(e: any) {
   if (mgrType.value === "method") { editForm.value.catStr = (e.category||[]).join(", "); editForm.value.awStr = (e.applicable_when||[]).join("\n"); editForm.value.tsStr = (e.typical_scenarios||[]).join("\n"); }
   if (mgrType.value === "paper") { editForm.value.approach = e.model?.approach||""; editForm.value.lessons = e.evaluation?.lessons||""; }
   if (mgrType.value === "template") { editForm.value.atStr = (e.applicable_to||[]).join(", "); }
+  if (mgrType.value === "problem") { editForm.value.objStr = (e.objectives||[]).join("\n"); editForm.value.tagsStr = (e.tags?.problem_type||[]).join(", "); }
   editOpen.value = true;
 }
 async function doEditSave() {
@@ -427,6 +513,7 @@ async function doEditSave() {
     const id = editForm.value.id; let data: any = { ...editForm.value };
     if (mgrType.value === "method") { data.category = (editForm.value.catStr||"").split(",").map((s:string)=>s.trim()).filter(Boolean); data.applicable_when = (editForm.value.awStr||"").split("\n").filter(Boolean); data.typical_scenarios = (editForm.value.tsStr||"").split("\n").filter(Boolean); delete data.catStr; delete data.awStr; delete data.tsStr; await updateMethod(id, data); }
     else if (mgrType.value === "paper") { data.model = { approach: editForm.value.approach||"", innovation: editForm.value.model?.innovation||"", solution_method: editForm.value.model?.solution_method||"" }; data.evaluation = { strengths: editForm.value.evaluation?.strengths||[], weaknesses: editForm.value.evaluation?.weaknesses||[], lessons: editForm.value.lessons||"" }; delete data.approach; delete data.lessons; await updatePaper(id, data); }
+    else if (mgrType.value === "problem") { data.objectives = (editForm.value.objStr||"").split("\n").filter(Boolean); data.tags = { ...editForm.value.tags, problem_type: (editForm.value.tagsStr||"").split(",").map((s:string)=>s.trim()).filter(Boolean) }; delete data.objStr; delete data.tagsStr; await updateProblem(id, data); }
     else { data.applicable_to = (editForm.value.atStr||"").split(",").map((s:string)=>s.trim()).filter(Boolean); delete data.atStr; await updateTemplate(id, data); }
     editOpen.value = false; await loadMgrList(); await loadStats();
   } catch (e: any) { alert(`保存失败: ${e?.response?.data?.detail || e}`); }
@@ -440,7 +527,7 @@ async function doDelete() {
   deleting.value = true;
   try {
     const id = delTarget.value.id;
-    if (mgrType.value === "method") await deleteMethod(id); else if (mgrType.value === "paper") await deletePaper(id); else await deleteTemplate(id);
+    if (mgrType.value === "method") await deleteMethod(id); else if (mgrType.value === "paper") await deletePaper(id); else if (mgrType.value === "problem") await deleteProblem(id); else await deleteTemplate(id);
     delOpen.value = false; delTarget.value = null; await loadMgrList(); await loadStats();
   } catch (e: any) { alert(`删除失败: ${e?.response?.data?.detail||e}`); }
   finally { deleting.value = false; }
@@ -459,11 +546,12 @@ async function doReindex() {
 const impType = ref("method"); const impText = ref(""); const impName = ref(""); const impFile = ref<File | null>(null);
 const dragOver = ref(false); const fileRef = ref<HTMLInputElement | null>(null);
 const extracting = ref(false); const saving = ref(false); const extractPreview = ref(""); const extractError = ref("");
-const impTypes = [{ label: "方法卡片", value: "method" }, { label: "真题论文", value: "paper" }, { label: "框架模板", value: "template" }];
+const impTypes = [{ label: "方法卡片", value: "method" }, { label: "真题论文", value: "paper" }, { label: "框架模板", value: "template" }, { label: "竞赛真题", value: "problem" }];
 const impPlaceholder = computed(() => ({
   method: "粘贴方法描述...\n例如: 粒子群优化算法(PSO)是一种基于群体智能的启发式优化算法...",
   paper: "粘贴论文内容...\n例如: 2024年国赛A题优秀论文...",
   template: "粘贴分析框架描述...\n例如: 第一步: 问题识别...",
+  problem: "粘贴竞赛真题...\n例如: 2024年国赛B题...",
 }[impType.value]));
 
 function triggerFileInput() { fileRef.value?.click(); }
@@ -471,18 +559,34 @@ function onFileSel(e: Event) { readFile((e.target as HTMLInputElement).files?.[0
 function onDrop(e: DragEvent) { dragOver.value = false; readFile(e.dataTransfer?.files?.[0]); }
 function readFile(file?: File) {
   if (!file) return;
-  if (file.size > 5*1024*1024) { extractError.value = "文件超过 5MB"; return; }
+  if (file.size > 10*1024*1024) { extractError.value = "文件超过 10MB"; return; }
   impFile.value = file; if (!impName.value) impName.value = file.name.replace(/\.[^.]+$/, "");
-  const r = new FileReader(); r.onload = () => { impText.value = r.result as string; }; r.readAsText(file);
+  const ext = file.name.split('.').pop()?.toLowerCase();
+  if (ext === 'pdf' || ext === 'docx') {
+    // Binary files: don't read as text, backend will extract
+    impText.value = `[${ext.toUpperCase()} 文件: ${file.name}]\n文件内容将由后端自动提取，无需手动粘贴。`;
+  } else {
+    const r = new FileReader(); r.onload = () => { impText.value = r.result as string; }; r.readAsText(file);
+  }
 }
 function clearFile() { impFile.value = null; impText.value = ""; if (fileRef.value) fileRef.value.value = ""; }
+// 追加论文: 记录最后导入的题目 ID
+const lastProblemRef = ref("");
+function switchToPaperUpload() {
+  impType.value = "paper"; impText.value = ""; impName.value = ""; clearFile();
+  extractPreview.value = ""; extractError.value = "";
+}
 function fmtSize(b: number) { if (b<1024) return `${b}B`; if (b<1048576) return `${(b/1024).toFixed(1)}KB`; return `${(b/1048576).toFixed(1)}MB`; }
 
 async function doExtract() {
   if (!impText.value.trim()) return;
   extracting.value = true; extractError.value = ""; extractPreview.value = "";
   try {
-    const res = await uploadKnowledge({ text: impText.value.trim(), file: impFile.value || undefined, kb_type: impType.value, name: impName.value });
+    const uploadParams: any = { text: impText.value.trim(), file: impFile.value || undefined, kb_type: impType.value, name: impName.value };
+    if (impType.value === 'paper' && lastProblemRef.value) {
+      uploadParams.problem_ref = lastProblemRef.value;
+    }
+    const res = await uploadKnowledge(uploadParams);
     let tries = 0;
     while (tries < 60) {
       await new Promise(r => setTimeout(r, 1000));
@@ -496,13 +600,29 @@ async function doExtract() {
   finally { extracting.value = false; }
 }
 async function doSaveExtract() {
-  saving.value = true; await loadStats(); await new Promise(r => setTimeout(r, 500));
+  saving.value = true;
+  // 从预览 YAML 中解析 entry_id
+  const yamlMatch = extractPreview.value.match(/id:\s*["']?(prob_\d+|paper_\w+|mc_\d+|tpl_\w+)["']?/);
+  const entryId = yamlMatch ? yamlMatch[1] : "";
+
+  await loadStats(); await new Promise(r => setTimeout(r, 500));
+
+  // 如果是题目导入，记录下来，方便后续追加论文
+  if (impType.value === 'problem' && entryId) {
+    lastProblemRef.value = entryId;
+  }
+
   extractPreview.value = ""; extractError.value = ""; impText.value = ""; impName.value = ""; clearFile(); saving.value = false;
-  alert("已保存到知识库,切换到「检索知识」可搜索验证。");
+
+  if (impType.value === 'problem' && lastProblemRef.value) {
+    // 不弹 alert，让用户在追加区域操作
+  } else {
+    alert("已保存到知识库,切换到「检索知识」可搜索验证。");
+  }
 }
 
 // ── shared ──────────────────────────────────────────────────────
-const stats = ref<KBStats>({ methods_count:0,papers_count:0,templates_count:0,total:0 });
+const stats = ref<KBStats>({ methods_count:0,papers_count:0,templates_count:0,problems_count:0,total:0 });
 async function loadStats() { try { const r = await getKBStats(); stats.value = r.data; } catch {/*ignore*/} }
 onMounted(async () => {
   if (auth.token) await auth.checkSession();

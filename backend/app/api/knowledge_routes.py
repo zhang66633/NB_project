@@ -24,6 +24,7 @@ class KBStats(BaseModel):
     methods_count: int = 0
     papers_count: int = 0
     templates_count: int = 0
+    problems_count: int = 0
     total: int = 0
 
 
@@ -58,6 +59,7 @@ class PaperSummary(BaseModel):
     title: str
     tags: dict
     quality_rating: int
+    problem_ref: str = ""
 
 
 class PaperDetail(BaseModel):
@@ -67,6 +69,7 @@ class PaperDetail(BaseModel):
     problem_id: str
     title: str
     tags: dict
+    problem_ref: str = ""
     problem_context: str = ""
     methodology_chain: list[str] = []
     key_formulas: list[dict] = []
@@ -94,6 +97,32 @@ class TemplateDetail(BaseModel):
     name: str
     applicable_to: list[str]
     steps: list[dict]
+
+
+class ProblemSummary(BaseModel):
+    id: str
+    year: int
+    competition: str
+    problem_id: str
+    title: str
+    tags: dict
+    linked_papers_count: int = 0
+
+
+class ProblemDetail(BaseModel):
+    id: str
+    year: int
+    competition: str
+    problem_id: str
+    title: str
+    full_text: str = ""
+    background: str = ""
+    objectives: list[str] = []
+    data_description: str = ""
+    deliverables: list[str] = []
+    tags: dict
+    linked_papers: list[str] = []
+    source_url: str = ""
 
 
 class SearchResult(BaseModel):
@@ -171,8 +200,14 @@ def _get_embedder():
 def _find_yaml_file(kb_type: str, entry_id: str) -> Optional[Path]:
     """Scan knowledge_base/{subdir}/**/*.yaml for the file with matching id."""
     settings = get_settings()
-    subdir_map = {"method": "methods", "paper": "papers", "template": "templates"}
-    key_map = {"method": "method_card", "paper": "paper", "template": "template"}
+    subdir_map = {
+        "method": "methods", "paper": "papers",
+        "template": "templates", "problem": "problems",
+    }
+    key_map = {
+        "method": "method_card", "paper": "paper",
+        "template": "template", "problem": "problem",
+    }
     subdir = subdir_map.get(kb_type, kb_type)
     top_key = key_map.get(kb_type, "")
     search_dir = settings.kb_root / subdir
@@ -192,8 +227,14 @@ def _find_yaml_file(kb_type: str, entry_id: str) -> Optional[Path]:
 def _next_id(kb_type: str) -> str:
     """Auto-generate the next sequential ID."""
     settings = get_settings()
-    subdir_map = {"method": "methods", "paper": "papers", "template": "templates"}
-    prefix_map = {"method": "mc_", "paper": "paper_", "template": "tpl_"}
+    subdir_map = {
+        "method": "methods", "paper": "papers",
+        "template": "templates", "problem": "problems",
+    }
+    prefix_map = {
+        "method": "mc_", "paper": "paper_",
+        "template": "tpl_", "problem": "prob_",
+    }
     subdir = subdir_map.get(kb_type, kb_type)
     prefix = prefix_map.get(kb_type, "id_")
     search_dir = settings.kb_root / subdir
@@ -204,7 +245,10 @@ def _next_id(kb_type: str) -> str:
                 data = yaml.safe_load(yf.read_text(encoding="utf-8"))
                 if not data:
                     continue
-                key_map = {"method": "method_card", "paper": "paper", "template": "template"}
+                key_map = {
+                    "method": "method_card", "paper": "paper",
+                    "template": "template", "problem": "problem",
+                }
                 top_key = key_map.get(kb_type, "")
                 if top_key in data and isinstance(data[top_key], dict):
                     rid = data[top_key].get("id", "")
@@ -227,11 +271,13 @@ async def kb_stats():
     methods = len(loader.load_all_methods())
     papers = len(loader.load_all_papers())
     templates = len(loader.load_all_templates())
+    problems = len(loader.load_all_problems())
     return KBStats(
         methods_count=methods,
         papers_count=papers,
         templates_count=templates,
-        total=methods + papers + templates,
+        problems_count=problems,
+        total=methods + papers + templates + problems,
     )
 
 
@@ -415,6 +461,76 @@ async def get_template_raw(tpl_id: str):
     return RawTextResponse(entry_id=tpl_id, raw_text=raw_path.read_text(encoding="utf-8"))
 
 
+# ── problems ───────────────────────────────────────────────────────────
+
+
+@knowledge_router.get("/problems", response_model=list[ProblemSummary])
+async def list_problems(
+    competition: Optional[str] = Query(None, description="Filter: 国赛/美赛/研赛"),
+    year: Optional[int] = Query(None, description="Filter by competition year"),
+    problem_type: Optional[str] = Query(None, description="Filter by problem type tag"),
+):
+    """List all problems with optional filters."""
+    loader = _get_loader()
+    problems = loader.load_all_problems()
+
+    if competition:
+        problems = [p for p in problems if p.competition == competition]
+    if year:
+        problems = [p for p in problems if p.year == year]
+    if problem_type:
+        problems = [
+            p for p in problems
+            if problem_type in p.tags.get("problem_type", [])
+        ]
+
+    return [
+        ProblemSummary(
+            id=p.id,
+            year=p.year,
+            competition=p.competition,
+            problem_id=p.problem_id,
+            title=p.title,
+            tags=p.tags,
+            linked_papers_count=len(p.linked_papers),
+        )
+        for p in problems
+    ]
+
+
+@knowledge_router.get("/problems/{problem_id}", response_model=ProblemDetail)
+async def get_problem(problem_id: str):
+    """Get a single problem by ID."""
+    loader = _get_loader()
+    prob = loader.get_problem_by_id(problem_id)
+    if not prob:
+        raise HTTPException(status_code=404, detail=f"题目 {problem_id} 不存在")
+    return ProblemDetail(**prob.model_dump())
+
+
+@knowledge_router.get("/problems/{problem_id}/papers", response_model=list[PaperSummary])
+async def get_problem_papers(problem_id: str):
+    """Get all papers linked to a specific problem."""
+    loader = _get_loader()
+    prob = loader.get_problem_by_id(problem_id)
+    if not prob:
+        raise HTTPException(status_code=404, detail=f"题目 {problem_id} 不存在")
+    papers = loader.get_papers_by_problem(problem_id)
+    return [PaperSummary(**p.model_dump()) for p in papers]
+
+
+@knowledge_router.get("/problems/{problem_id}/raw", response_model=RawTextResponse)
+async def get_problem_raw(problem_id: str):
+    """获取题目的原始导入文本。"""
+    yf = _find_yaml_file("problem", problem_id)
+    if not yf:
+        raise HTTPException(status_code=404, detail=f"题目 {problem_id} 不存在")
+    raw_path = yf.with_suffix(".raw.txt")
+    if not raw_path.exists():
+        raise HTTPException(status_code=404, detail="该条目没有原始文本（可能不是通过导入创建的）")
+    return RawTextResponse(entry_id=problem_id, raw_text=raw_path.read_text(encoding="utf-8"))
+
+
 # ── reindex (enhanced with incremental) ───────────────────────────
 
 
@@ -451,8 +567,9 @@ async def upload_knowledge(
     background_tasks: BackgroundTasks,
     text: str = Form("", description="原始文本内容（与 file 二选一）"),
     file: Optional[UploadFile] = File(None, description="上传文件（.txt/.md/.pdf 等，与 text 二选一）"),
-    kb_type: str = Form(..., description="method / paper / template"),
+    kb_type: str = Form(..., description="method / paper / template / problem"),
     name: str = Form("", description="名称提示"),
+    problem_ref: str = Form("", description="上传论文时指定关联的题目 ID，跳过自动匹配"),
     user: GitHubUser = Depends(require_contributor),
 ):
     """上传原始文本或文件，LLM 自动提取结构化知识，保存 YAML 并增量索引。
@@ -460,26 +577,37 @@ async def upload_knowledge(
     - text 和 file 至少提供一个
     - 如果提供 file，读取其内容作为文本
     - 返回 job_id，前端轮询 GET /knowledge/jobs/{job_id} 获取结果
+    - problem_ref: 上传论文时指定关联题目，优先级高于自动匹配
     """
-    if kb_type not in ("method", "paper", "template"):
-        raise HTTPException(status_code=400, detail="kb_type 必须为 method / paper / template")
+    if kb_type not in ("method", "paper", "template", "problem"):
+        raise HTTPException(status_code=400, detail="kb_type 必须为 method / paper / template / problem")
 
     # Resolve text content
     raw_text = text.strip()
     if file:
         try:
             content = await file.read()
-            # Try UTF-8 first, fallback to other encodings
-            for enc in ("utf-8", "gbk", "gb2312", "latin-1"):
-                try:
-                    raw_text = content.decode(enc)
-                    break
-                except UnicodeDecodeError:
-                    continue
+            filename = (file.filename or "").lower()
+
+            # Detect file type and extract text accordingly
+            if filename.endswith(".pdf"):
+                raw_text = _extract_pdf_text(content)
+            elif filename.endswith(".docx"):
+                raw_text = _extract_docx_text(content)
             else:
-                raw_text = content.decode("utf-8", errors="replace")
+                # Plain text files
+                for enc in ("utf-8", "gbk", "gb2312", "latin-1"):
+                    try:
+                        raw_text = content.decode(enc)
+                        break
+                    except UnicodeDecodeError:
+                        continue
+                else:
+                    raw_text = content.decode("utf-8", errors="replace")
             if not name and file.filename:
                 name = Path(file.filename).stem
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"文件读取失败: {e}")
 
@@ -489,8 +617,45 @@ async def upload_knowledge(
     job_id = str(uuid.uuid4())[:8]
     _extraction_jobs[job_id] = {"status": "processing", "result": None, "error": None}
 
-    background_tasks.add_task(_run_extraction, job_id, raw_text, kb_type, name)
+    background_tasks.add_task(_run_extraction, job_id, raw_text, kb_type, name, problem_ref)
     return KnowledgeUploadJob(job_id=job_id, status="processing")
+
+
+def _extract_pdf_text(file_bytes: bytes) -> str:
+    """Extract text from a PDF byte stream."""
+    try:
+        import io
+        import PyPDF2
+        reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+        pages = []
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                pages.append(text)
+        return "\n\n".join(pages)
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="PDF 提取需要安装 PyPDF2: pip install PyPDF2",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"PDF 解析失败: {e}")
+
+
+def _extract_docx_text(file_bytes: bytes) -> str:
+    """Extract text from a DOCX byte stream."""
+    try:
+        import io
+        import docx
+        doc = docx.Document(io.BytesIO(file_bytes))
+        return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="DOCX 提取需要安装 python-docx: pip install python-docx",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"DOCX 解析失败: {e}")
 
 
 @knowledge_router.get("/jobs/{job_id}", response_model=KnowledgeUploadJob)
@@ -507,12 +672,15 @@ async def get_extraction_job(job_id: str):
     )
 
 
-async def _run_extraction(job_id: str, raw_text: str, kb_type: str, name_hint: str):
-    """Background task: LLM extract → validate → write YAML → index."""
+async def _run_extraction(job_id: str, raw_text: str, kb_type: str, name_hint: str, problem_ref: str = ""):
+    """Background task: LLM extract → validate → write YAML → index.
+
+    When problem_ref is provided (paper upload), use it directly — no matching needed.
+    """
     try:
         settings = get_settings()
         from ..core.llm.factory import LLMFactory
-        from ..knowledge.schemas import MethodCard, Paper, Template
+        from ..knowledge.schemas import MethodCard, Paper, Problem, Template
 
         # 1. LLM extraction
         config = settings.get_llm_config("analysis")
@@ -523,11 +691,13 @@ async def _run_extraction(job_id: str, raw_text: str, kb_type: str, name_hint: s
             "method": _EXTRACT_METHOD_PROMPT,
             "paper": _EXTRACT_PAPER_PROMPT,
             "template": _EXTRACT_TEMPLATE_PROMPT,
+            "problem": _EXTRACT_PROBLEM_PROMPT,
         }
         schema_map = {
             "method": MethodCard,
             "paper": Paper,
             "template": Template,
+            "problem": Problem,
         }
 
         prompt = prompt_map[kb_type].format(raw_text=raw_text)
@@ -546,51 +716,65 @@ async def _run_extraction(job_id: str, raw_text: str, kb_type: str, name_hint: s
         # 2. Generate ID and validate
         entry_id = _next_id(kb_type)
         schema_cls = schema_map[kb_type]
-        if kb_type == "method":
-            extracted["id"] = entry_id
-            try:
-                validated = schema_cls(**extracted)
-            except Exception as ve:
-                _extraction_jobs[job_id] = {
-                    "status": "error",
-                    "result": None,
-                    "error": f"LLM 提取的内容格式有误: {ve}",
-                }
-                return
-        elif kb_type == "paper":
-            extracted["id"] = entry_id
-            try:
-                validated = schema_cls(**extracted)
-            except Exception as ve:
-                _extraction_jobs[job_id] = {
-                    "status": "error",
-                    "result": None,
-                    "error": f"LLM 提取的内容格式有误: {ve}",
-                }
-                return
-        elif kb_type == "template":
-            extracted["id"] = entry_id
-            try:
-                validated = schema_cls(**extracted)
-            except Exception as ve:
-                _extraction_jobs[job_id] = {
-                    "status": "error",
-                    "result": None,
-                    "error": f"LLM 提取的内容格式有误: {ve}",
-                }
-                return
-        else:
-            validated = extracted
+        extracted["id"] = entry_id
+        try:
+            validated = schema_cls(**extracted)
+        except Exception as ve:
+            _extraction_jobs[job_id] = {
+                "status": "error",
+                "result": None,
+                "error": f"LLM 提取的内容格式有误: {ve}",
+            }
+            return
+
+        # 2b. Link paper to problem
+        if kb_type == "paper":
+            target_problem_id = problem_ref  # 优先使用前端指定的关联
+            if not target_problem_id:
+                # 自动匹配：根据 year + competition + problem_id 查找
+                year = extracted.get("year")
+                competition = extracted.get("competition")
+                pid = extracted.get("problem_id")
+                if year and competition and pid:
+                    loader = _get_loader()
+                    matched = loader.get_problem_by_key(year, competition, pid)
+                    if matched:
+                        target_problem_id = matched.id
+
+            if target_problem_id:
+                validated.problem_ref = target_problem_id
+                # 更新题目的 linked_papers
+                prob_yf = _find_yaml_file("problem", target_problem_id)
+                if prob_yf:
+                    import yaml as _yaml
+                    prob_data = _yaml.safe_load(prob_yf.read_text(encoding="utf-8"))
+                    if prob_data and "problem" in prob_data:
+                        linked = prob_data["problem"].get("linked_papers", [])
+                        if validated.id not in linked:
+                            linked.append(validated.id)
+                            prob_data["problem"]["linked_papers"] = linked
+                            prob_yf.write_text(
+                                yaml.dump(prob_data, allow_unicode=True,
+                                          default_flow_style=False, sort_keys=False, indent=2),
+                                encoding="utf-8",
+                            )
 
         # 3. Build YAML and write file
-        top_key = {"method": "method_card", "paper": "paper", "template": "template"}[kb_type]
+        top_key_map = {
+            "method": "method_card", "paper": "paper",
+            "template": "template", "problem": "problem",
+        }
+        top_key = top_key_map[kb_type]
         yaml_str = yaml.dump(
             {top_key: validated.model_dump() if hasattr(validated, "model_dump") else extracted},
             allow_unicode=True, default_flow_style=False, sort_keys=False, indent=2,
         )
 
         # Determine output path
-        subdir_map = {"method": "methods", "paper": "papers", "template": "templates"}
+        subdir_map = {
+            "method": "methods", "paper": "papers",
+            "template": "templates", "problem": "problems",
+        }
         subdir = subdir_map[kb_type]
         if kb_type == "method":
             cat = (extracted.get("category") or ["other"])[0]
@@ -601,6 +785,12 @@ async def _run_extraction(job_id: str, raw_text: str, kb_type: str, name_hint: s
             year = extracted.get("year", 2025)
             pid = extracted.get("problem_id", "X")
             safe_name = f"{year}{competition}{pid}"
+            out_dir = settings.kb_root / subdir / competition
+        elif kb_type == "problem":
+            competition = extracted.get("competition", "other")
+            year = extracted.get("year", 2025)
+            pid = extracted.get("problem_id", "X")
+            safe_name = f"{year}{pid}"
             out_dir = settings.kb_root / subdir / competition
         else:
             safe_name = (extracted.get("name") or name_hint or entry_id).replace(" ", "_")
@@ -745,13 +935,47 @@ _EXTRACT_PAPER_PROMPT = """你是一个数学建模竞赛论文深度分析专�
   }},
 
   "source": "论文来源（如有）",
-  "quality_rating": 3
+  "quality_rating": 3,
+  "problem_ref": "如果这篇论文解答的题目已经导入到知识库中（可通过年份+赛事+题号匹配），填写对应的 prob_ 编号（如 prob_001），否则留空字符串"
 }}
 
 重要提醒:
 - 每个字段都要认真填写，不要留空。如果原文没有明确提到某项，基于你的数学建模知识合理推断并标注"(推断)"。
 - methodology_chain 是最关键的字段，它展示了完整的建模思路链路，要让读者一目了然。
 - reusable_patterns 要提炼出高于具体问题的、可以迁移的方法论。
+- problem_ref 会自动匹配: 系统会根据 year+competition+problem_id 找到对应题目，LLM 也可以直接填写确认。
+- 只返回 JSON，不要有任何其他文字。"""
+
+_EXTRACT_PROBLEM_PROMPT = r"""你是一个数学建模竞赛题目提取专家。请从以下文本中提取竞赛真题的结构化信息。
+
+文本内容:
+```
+{raw_text}
+```
+
+请返回严格的 JSON 格式（不要有任何额外文本），结构如下:
+{{
+  "year": 年份数字（如 2023）,
+  "competition": "国赛" 或 "美赛" 或 "研赛",
+  "problem_id": "题号（A/B/C/D/E 等单个字母）",
+  "title": "题目名称",
+  "full_text": "完整题目原文，尽量保留原文内容，不超过5000字",
+  "background": "问题背景的简要概述（100-200字）",
+  "objectives": ["求解目标1", "求解目标2"],
+  "data_description": "题目附带的数据说明（如有）",
+  "deliverables": ["需要提交的内容1", "需要提交的内容2"],
+  "tags": {{
+    "problem_type": ["从以下选择: optimization/prediction/evaluation/statistics/classification/clustering/综合"],
+    "difficulty": "easy/medium/hard"
+  }},
+  "source_url": ""
+}}
+
+重要提醒:
+- year 必须是整数，直接从题目头部年份提取
+- competition 从题目来源判断：全国大学生数学建模竞赛→国赛，美国大学生数学建模竞赛→美赛
+- problem_id 是单个大写字母
+- 如果文本中没有明确某项信息，使用空字符串 "" 或空数组 []
 - 只返回 JSON，不要有任何其他文字。"""
 
 _EXTRACT_TEMPLATE_PROMPT = """你是一个数学建模教学专家。请从以下文本中提取问题分析框架模板。
@@ -1032,6 +1256,91 @@ async def delete_template(tpl_id: str, user: GitHubUser = Depends(require_contri
             raw_path.unlink()
 
         return KnowledgeCrudResponse(success=True, entry_id=tpl_id, message="模板已删除")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"删除失败: {e}")
+
+
+# ── CRUD: problems ───────────────────────────────────────────────
+
+
+@knowledge_router.post("/problems", response_model=KnowledgeCrudResponse)
+async def create_problem(data: dict, user: GitHubUser = Depends(require_contributor)):
+    """手动创建竞赛题目。"""
+    try:
+        entry_id = _next_id("problem")
+        data["id"] = entry_id
+        from ..knowledge.schemas import Problem
+        validated = Problem(**data)
+
+        yaml_str = yaml.dump(
+            {"problem": validated.model_dump()},
+            allow_unicode=True, default_flow_style=False, sort_keys=False, indent=2,
+        )
+        settings = get_settings()
+        comp = (data.get("competition") or "other")
+        year = data.get("year", 2025)
+        pid = data.get("problem_id", "X")
+        safe_name = f"{year}{pid}"
+        out_dir = settings.kb_root / "problems" / comp
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{safe_name}.yaml"
+        out_path.write_text(yaml_str, encoding="utf-8")
+
+        embedder = _get_embedder()
+        embedder.add_document(out_path)
+
+        return KnowledgeCrudResponse(success=True, entry_id=entry_id, message="题目已创建")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"创建失败: {e}")
+
+
+@knowledge_router.put("/problems/{problem_id}", response_model=KnowledgeCrudResponse)
+async def update_problem(problem_id: str, data: dict, user: GitHubUser = Depends(require_contributor)):
+    """更新竞赛题目。"""
+    try:
+        yf = _find_yaml_file("problem", problem_id)
+        if not yf:
+            raise HTTPException(status_code=404, detail=f"题目 {problem_id} 不存在")
+
+        data["id"] = problem_id
+        from ..knowledge.schemas import Problem
+        validated = Problem(**data)
+
+        yaml_str = yaml.dump(
+            {"problem": validated.model_dump()},
+            allow_unicode=True, default_flow_style=False, sort_keys=False, indent=2,
+        )
+        yf.write_text(yaml_str, encoding="utf-8")
+
+        embedder = _get_embedder()
+        embedder.remove_document(problem_id)
+        embedder.add_document(yf)
+
+        return KnowledgeCrudResponse(success=True, entry_id=problem_id, message="题目已更新")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"更新失败: {e}")
+
+
+@knowledge_router.delete("/problems/{problem_id}", response_model=KnowledgeCrudResponse)
+async def delete_problem(problem_id: str, user: GitHubUser = Depends(require_contributor)):
+    """删除竞赛题目。"""
+    try:
+        yf = _find_yaml_file("problem", problem_id)
+        if not yf:
+            raise HTTPException(status_code=404, detail=f"题目 {problem_id} 不存在")
+
+        embedder = _get_embedder()
+        embedder.remove_document(problem_id)
+        yf.unlink()
+        raw_path = yf.with_suffix(".raw.txt")
+        if raw_path.exists():
+            raw_path.unlink()
+
+        return KnowledgeCrudResponse(success=True, entry_id=problem_id, message="题目已删除")
     except HTTPException:
         raise
     except Exception as e:

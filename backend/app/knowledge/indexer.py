@@ -69,9 +69,11 @@ def index_knowledge_base(
         methods = len(kb_loader.load_all_methods())
         papers = len(kb_loader.load_all_papers())
         templates = len(kb_loader.load_all_templates())
+        problems = len(kb_loader.load_all_problems())
         click.echo(
-            f"[dry-run] Files: {methods} methods + {papers} papers + {templates} templates "
-            f"= {methods + papers + templates} total"
+            f"[dry-run] Files: {methods} methods + {papers} papers + "
+            f"{templates} templates + {problems} problems "
+            f"= {methods + papers + templates + problems} total"
         )
         return
 

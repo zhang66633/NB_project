@@ -114,6 +114,7 @@ def retrieve_knowledge(state: AgentState) -> dict:
     methods: List[dict] = []
     papers: List[dict] = []
     templates: List[dict] = []
+    problems: List[dict] = []
 
     problem_type = state["problem_type"]
 
@@ -133,6 +134,7 @@ def retrieve_knowledge(state: AgentState) -> dict:
                 "title": paper.title,
                 "year": paper.year,
                 "competition": paper.competition,
+                "problem_id": paper.problem_id,
                 "approach": paper.model.approach,
             })
 
@@ -141,6 +143,17 @@ def retrieve_knowledge(state: AgentState) -> dict:
                 "id": tpl.id,
                 "name": tpl.name,
                 "applicable_to": tpl.applicable_to,
+            })
+
+        for prob in loader.get_problems_by_type(problem_type):
+            problems.append({
+                "id": prob.id,
+                "title": prob.title,
+                "year": prob.year,
+                "competition": prob.competition,
+                "problem_id": prob.problem_id,
+                "background": prob.background[:300],
+                "objectives": prob.objectives,
             })
 
     # 如果没有标签匹配，尝试语义搜索
@@ -159,6 +172,14 @@ def retrieve_knowledge(state: AgentState) -> dict:
                     papers.append({"id": meta.get("id"), "title": doc.page_content[:100]})
                 elif meta.get("type") == "template":
                     templates.append({"id": meta.get("id"), "name": meta.get("name")})
+                elif meta.get("type") == "problem":
+                    problems.append({
+                        "id": meta.get("id"),
+                        "title": meta.get("title", ""),
+                        "year": meta.get("year"),
+                        "competition": meta.get("competition"),
+                        "problem_id": meta.get("problem_id"),
+                    })
         except Exception:
             pass  # 向量库未初始化时优雅降级
 
@@ -166,16 +187,19 @@ def retrieve_knowledge(state: AgentState) -> dict:
         "methods_count": len(methods),
         "papers_count": len(papers),
         "templates_count": len(templates),
+        "problems_count": len(problems),
     })
 
     return {
         "kb_methods": methods,
         "kb_papers": papers,
         "kb_templates": templates,
+        "kb_problems": problems,
         "messages": [
             SystemMessage(
                 content=f"知识库检索: 找到 {len(methods)} 个方法, "
-                        f"{len(papers)} 篇论文, {len(templates)} 个模板"
+                        f"{len(papers)} 篇论文, {len(templates)} 个模板, "
+                        f"{len(problems)} 道竞赛真题"
             )
         ],
     }
@@ -203,10 +227,17 @@ def plan_execution(state: AgentState) -> dict:
         f"- [{p['year']}] {p['title']}" for p in state["kb_papers"]
     ) or "（无参考论文）"
 
+    problems_str = "\n".join(
+        f"- [{p.get('year', '?')} {p.get('competition', '?')} {p.get('problem_id', '?')}] "
+        f"{p.get('title', '?')}"
+        for p in state["kb_problems"]
+    ) or "（无相关竞赛真题）"
+
     system_prompt = PLANNER_SYSTEM_PROMPT.format(
         methods=methods_str,
         templates=templates_str,
         papers=papers_str,
+        problems=problems_str,
     )
 
     user_prompt = PLANNER_USER_TEMPLATE.format(

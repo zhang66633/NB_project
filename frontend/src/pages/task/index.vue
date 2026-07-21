@@ -47,7 +47,11 @@
       </div>
 
       <div v-else class="flex-1 min-h-0">
-        <ChatArea :task-id="task_id" @send="handleUserSend" />
+        <ChatArea
+          :task-id="task_id"
+          :messages="displayMessages"
+          @send="handleUserSend"
+        />
       </div>
     </div>
 
@@ -70,7 +74,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from "vue";
+import { ref, onMounted, onUnmounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import { ArrowLeft, StopCircle, Loader2 } from "lucide-vue-next";
 import Files from "@/components/Files.vue";
@@ -89,7 +93,6 @@ const chatSession = useChatSessionStore();
 const taskStore = useTaskStore();
 
 const loading = ref(true);
-const isRunning = ref(false);
 const uploading = ref(false);
 const task = ref<{ title?: string; mode?: string } | null>(null);
 const currentMode = ref<"teach" | "execute">("teach");
@@ -98,29 +101,40 @@ const notebookCells = ref<Array<{ cell_type: string; source?: string }>>([]);
 
 const session = ref(chatSession.sessions.find((s) => s.id === props.task_id) || null);
 
-const steps = ref([
+// 聊天面板消息 = 用户在 chatSession 发的问题 + 后端经 WS 推送的 agent 进度/最终答案
+const displayMessages = computed<Message[]>(() => {
+  const userMsgs = chatSession.sessions.find((s) => s.id === props.task_id)?.messages ?? [];
+  const agentMsgs = taskStore.messages;
+  return [...userMsgs, ...agentMsgs];
+});
+
+// 运行态来自 WS（taskStore.isRunning），不再用本地 mock
+const isRunning = computed(() => taskStore.isRunning);
+
+// 根据当前阶段高亮右侧步骤条
+const stepOrder = ["问题分析", "模型构建", "求解计算", "验证分析", "论文写作"];
+const steps = computed(() => {
+  const current = taskStore.currentStep;
+  const idx = stepOrder.indexOf(current);
+  return stepOrder.map((label, i) => ({
+    id: String(i + 1),
+    label,
+    status: idx === -1 ? ("wait" as const) : (i < idx ? ("done" as const) : i === idx ? ("active" as const) : ("wait" as const)),
+    description: {
+      "问题分析": "识别问题类型,理解题意",
+      "模型构建": "选择并建立数学模型",
+      "求解计算": "生成并执行求解代码",
+      "验证分析": "检验模型鲁棒性",
+      "论文写作": "生成结构化论文",
+    }[label] as string,
+  }));
+});
   { id: "1", label: "问题分析", status: "wait" as const, description: "苏格拉底式引导,理解题意" },
   { id: "2", label: "模型构建", status: "wait" as const, description: "启发式选择数学模型" },
   { id: "3", label: "求解计算", status: "wait" as const, description: "引导编写求解代码" },
   { id: "4", label: "验证分析", status: "wait" as const, description: "自查模型鲁棒性" },
   { id: "5", label: "论文写作", status: "wait" as const, description: "生成结构化论文框架" },
 ]);
-
-const mockReplies: Record<string, string[]> = {
-  teach: [
-    "🤔 **让我们一起来分析这个问题。**\n\n首先,你能说说这个问题的核心目标是什么?试着用自己的话概括。",
-    "📝 **很好!现在来看决策变量。**\n\n哪些因素的值是我们可以控制的?试着列出至少 2 个。",
-    "💡 **约束条件也很关键。**\n\n现实中有哪些限制?比如资源、时间、物理规律?",
-    "🔍 **建模方向建议。**\n\n根据上面的分析,你觉得以下哪种方法更合适?\n- 线性规划\n- 整数规划\n- 动态规划\n选一个并说明理由。",
-    "📄 **最后一步:论文框架。**\n\n试着按照 摘要→问题重述→模型→求解→结论 的大纲,写一段简短的分析。",
-  ],
-  execute: [
-    "📋 **分析完成。**\n\n已识别问题类型与关键要素,模型正在构建中。",
-    "🏗️ **模型已建立。**\n\n求解代码已生成,正在沙箱中执行。",
-    "✅ **验证通过。**\n\n论文已生成,可在右侧面板查看。",
-  ],
-};
-const replyIndex: Record<string, number> = {};
 
 function generateId() {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -133,33 +147,21 @@ function toggleMode() {
 function handleUserSend(text: string) {
   if (!session.value) return;
 
+  // 用户问题写入会话（用于聊天面板显示）
   const userMsg: Message = { id: generateId(), msg_type: "user", content: text, created_at: new Date().toISOString() };
   chatSession.addMessage(props.task_id, userMsg);
-  isRunning.value = true;
 
-  // 尝试后端
+  // 发起后端真实任务（WebSocket 会推送进度与最终答案）
   commonApi.createTask({ problem: text, mode: currentMode.value })
-    .then(() => { /* 轮询由 chat 页面处理 */ })
-    .catch(() => { triggerMockReply(); });
-}
-
-function triggerMockReply() {
-  const mode = currentMode.value;
-  if (!replyIndex[props.task_id]) replyIndex[props.task_id] = 0;
-  const replies = mockReplies[mode] || mockReplies.execute;
-  const idx = replyIndex[props.task_id]++ % replies.length;
-
-  // 更新步骤
-  if (idx < 5) steps.value[idx].status = "done";
-  if (mode === "execute" && idx >= 2) steps.value.forEach((s, i) => { s.status = i <= idx ? "done" : "wait"; });
-
-  setTimeout(() => {
-    chatSession.addMessage(props.task_id, {
-      id: generateId(), msg_type: "agent", content: replies[idx],
-      created_at: new Date().toISOString(),
+    .catch((e) => {
+      console.error("createTask failed", e);
+      // 后端不可达时给一个提示气泡，不再走 mock 假数据
+      chatSession.addMessage(props.task_id, {
+        id: generateId(), msg_type: "agent",
+        content: "⚠️ 后端服务暂不可达，请确认后端已启动（uvicorn app.main:app --port 8000）。",
+        created_at: new Date().toISOString(),
+      });
     });
-    isRunning.value = false;
-  }, 1000);
 }
 
 async function fetchTask() {

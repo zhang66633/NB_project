@@ -82,6 +82,7 @@ class ProgressEvent:
     NODE_END = "node_end"
     PROGRESS = "progress"
     ERROR = "error"
+    TASK_END = "task_end"
 
     def __init__(
         self,
@@ -161,6 +162,13 @@ class RedisPublisher:
     def error(self, task_id: str, node: str, error_msg: str) -> int:
         """Shorthand for publishing an error event."""
         return self.publish(task_id, ProgressEvent.ERROR, node, {"message": error_msg})
+
+    def task_end(self, task_id: str, node: str, status: str, data: Optional[dict] = None) -> int:
+        """Shorthand for publishing a task_end (completion) event."""
+        payload = {"status": status}
+        if data:
+            payload.update(data)
+        return self.publish(task_id, ProgressEvent.TASK_END, node, payload)
 
     def close(self):
         if self._client:

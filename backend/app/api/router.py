@@ -404,6 +404,12 @@ async def list_api_keys(user: GitHubUser | None = Depends(get_current_user)):
 async def create_api_key(req: ApiKeyCreate, user: GitHubUser | None = Depends(get_current_user)):
     _load_api_keys()
     uid = _resolve_user_id(user=user)
+
+    # 验证 Key 是否有效
+    valid, err_msg = await _verify_api_key(req.key, req.provider, req.model_name)
+    if not valid:
+        raise HTTPException(status_code=400, detail=f"Key 验证失败: {err_msg}")
+
     key_id = str(uuid.uuid4())[:8]
     masked = req.key[:4] + "****" + req.key[-4:] if len(req.key) > 8 else "****"
 

@@ -91,7 +91,15 @@ const isTool = computed(() => props.message.msg_type === "tool");
 
 const content = computed(() => props.message.content ?? "");
 
-const enableTypewriter = computed(() => props.isLast && isAgent.value);
+// 打字机仅用于「非流式的一次性外部消息」。
+// 我们流式生成的消息（streaming 字段存在，无论 true/false）已实时逐字展示过，
+// 切回历史后不应再重放，否则造成闪烁/重复。
+const enableTypewriter = computed(
+  () =>
+    props.isLast &&
+    isAgent.value &&
+    !("streaming" in props.message),
+);
 const rawText = ref(content.value);
 
 const { displayText, isTyping, skip } = useTypewriter(rawText, 12, enableTypewriter);
@@ -102,7 +110,8 @@ watch(content, (val) => {
 
 const agentLabel = computed(() => {
   if (!isAgent.value) return "";
-  const agentMsg = props.message as AgentMessage;
+  const agentType = (props.message as AgentMessage).agent_type;
+  if (!agentType) return "";
   const labels: Record<string, string> = {
     [AgentType.ORCHESTRATOR]: "主控",
     [AgentType.ANALYSIS]: "分析",
@@ -111,7 +120,7 @@ const agentLabel = computed(() => {
     [AgentType.VERIFICATION]: "验证",
     [AgentType.WRITING]: "写作",
   };
-  return labels[agentMsg.agent_type] ?? agentMsg.agent_type;
+  return labels[agentType] ?? agentType;
 });
 
 const avatarLetter = computed(() => {
@@ -151,6 +160,8 @@ const sysColor = computed(() => {
   }
 });
 
+// 对带 LaTeX 的流式内容，流式期间每次全量 parse 可能渲染半个公式。
+// 直接 parse 全量文本即可——marked 对不完整 $...$ 会按原样输出，不会报错。
 const renderedContent = computed(() => {
   const text = enableTypewriter.value ? displayText.value : content.value;
   if (!text) return "";

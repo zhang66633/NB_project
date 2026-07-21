@@ -3,12 +3,14 @@
 import uuid
 import asyncio
 import json
+import logging
 import shutil
 from pathlib import Path
-from typing import Optional
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Form, Depends, Query
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+logger = logging.getLogger(__name__)
+
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Depends, Query
+from fastapi.responses import FileResponse
 
 from .schemas.request import CreateTaskRequest, ApiKeyCreate
 from .schemas.response import (
@@ -19,11 +21,13 @@ from .schemas.response import (
 )
 from .ws import ws_router
 from .knowledge_routes import knowledge_router
+from .chat_routes import chat_router
 from ..config import get_settings
 
 api_router = APIRouter()
 api_router.include_router(ws_router)
 api_router.include_router(knowledge_router)
+api_router.include_router(chat_router)
 
 # ── Session manager ──────────────────────────────────────────────
 

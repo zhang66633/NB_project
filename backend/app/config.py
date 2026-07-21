@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     solving_model: str = "claude-sonnet-4-6"
     verification_model: str = "claude-sonnet-4-6"
     writing_model: str = "claude-sonnet-4-6"
+    # 自由问答（纯对话，不走 LangGraph 流水线）
+    chat_model: str = "deepseek-chat"
 
     # ---- LLM Defaults ----
     default_temperature: float = 0.3

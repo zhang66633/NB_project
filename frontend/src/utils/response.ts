@@ -10,6 +10,8 @@ export interface BaseMessage {
   created_at?: string;
   msg_type: "system" | "agent" | "user" | "tool";
   content?: string | null;
+  /** 流式增量更新中（此时跳过打字机效果，直接全量渲染） */
+  streaming?: boolean;
 }
 
 /** 工具调用消息 */
@@ -34,7 +36,8 @@ export interface UserMessage extends BaseMessage {
 /** Agent 消息基类 */
 export interface AgentMessage extends BaseMessage {
   msg_type: "agent";
-  agent_type: AgentType;
+  /** 流水线 agent 类型；纯对话（chat/teach）消息无此字段 */
+  agent_type?: AgentType;
 }
 
 /** 所有消息类型的联合类型 */

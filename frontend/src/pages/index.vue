@@ -187,7 +187,8 @@ function enterChat(mode: "teach" | "execute") {
 
 onMounted(async () => {
   try {
-    const data = await getKBStats();
+    const res = await getKBStats();
+    const data = res.data;
     statItems.value = [
       { key: "methods", label: "方法卡片", value: data.methods_count },
       { key: "papers", label: "真题论文", value: data.papers_count },

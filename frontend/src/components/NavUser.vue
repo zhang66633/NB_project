@@ -1,14 +1,29 @@
 <template>
   <div class="relative">
-    <!-- Logged out: show login button -->
-    <button
-      v-if="!auth.isLoggedIn"
-      class="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-      @click="router.push('/login')"
-    >
-      <Github class="h-4 w-4" />
-      <span class="hidden sm:inline">登录</span>
-    </button>
+    <!-- Logged out: 登录 + 设置/API Keys 入口（未登录也可用） -->
+    <template v-if="!auth.isLoggedIn">
+      <button
+        class="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        @click="router.push('/login')"
+      >
+        <Github class="h-4 w-4" />
+        <span class="hidden sm:inline">登录</span>
+      </button>
+      <button
+        class="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        title="API Keys"
+        @click="router.push('/apikeys')"
+      >
+        <Key class="h-4 w-4" />
+      </button>
+      <button
+        class="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        title="设置"
+        @click="router.push('/settings')"
+      >
+        <Settings class="h-4 w-4" />
+      </button>
+    </template>
 
     <!-- Logged in: user dropdown -->
     <template v-else>

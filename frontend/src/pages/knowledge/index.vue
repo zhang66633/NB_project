@@ -426,7 +426,7 @@ async function doEditSave() {
   try {
     const id = editForm.value.id; let data: any = { ...editForm.value };
     if (mgrType.value === "method") { data.category = (editForm.value.catStr||"").split(",").map((s:string)=>s.trim()).filter(Boolean); data.applicable_when = (editForm.value.awStr||"").split("\n").filter(Boolean); data.typical_scenarios = (editForm.value.tsStr||"").split("\n").filter(Boolean); delete data.catStr; delete data.awStr; delete data.tsStr; await updateMethod(id, data); }
-    else if (mgrType.value === "paper") { data.model = { approach: editForm.value.approach||"", innovation: e.model?.innovation||"", solution_method: e.model?.solution_method||"" }; data.evaluation = { strengths: e.evaluation?.strengths||[], weaknesses: e.evaluation?.weaknesses||[], lessons: editForm.value.lessons||"" }; delete data.approach; delete data.lessons; await updatePaper(id, data); }
+    else if (mgrType.value === "paper") { data.model = { approach: editForm.value.approach||"", innovation: editForm.value.model?.innovation||"", solution_method: editForm.value.model?.solution_method||"" }; data.evaluation = { strengths: editForm.value.evaluation?.strengths||[], weaknesses: editForm.value.evaluation?.weaknesses||[], lessons: editForm.value.lessons||"" }; delete data.approach; delete data.lessons; await updatePaper(id, data); }
     else { data.applicable_to = (editForm.value.atStr||"").split(",").map((s:string)=>s.trim()).filter(Boolean); delete data.atStr; await updateTemplate(id, data); }
     editOpen.value = false; await loadMgrList(); await loadStats();
   } catch (e: any) { alert(`保存失败: ${e?.response?.data?.detail || e}`); }

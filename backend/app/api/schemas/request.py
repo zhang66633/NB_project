@@ -15,6 +15,22 @@ class CancelTaskRequest(BaseModel):
     task_id: str
 
 
+# ── Chat (自由问答) ─────────────────────────────────────────────
+
+class ChatMessage(BaseModel):
+    """单条对话消息。"""
+    role: Literal["user", "assistant", "system"]
+    content: str
+
+
+class ChatRequest(BaseModel):
+    """自由问答请求。无状态：前端携带完整历史，后端滑动窗口截断。"""
+    messages: list[ChatMessage]
+    use_rag: bool = False  # 预留：后续挂知识库检索
+    # 对话模式：chat=自由问答（直接给结论），teach=教学模式（苏格拉底式引导，不直接给答案）
+    mode: Literal["chat", "teach"] = "chat"
+
+
 class ApiKeyCreate(BaseModel):
     """添加 API Key 请求。"""
     name: str

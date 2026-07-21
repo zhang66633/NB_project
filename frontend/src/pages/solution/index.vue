@@ -9,7 +9,7 @@
         <PanelRight class="h-4 w-4" />
       </button>
       <ChatArea
-        :messages="chatSession.activeSolutionMessages"
+        :messages="displayMessages"
         :is-running="chatSession.isRunning"
         empty-text="开始建模"
         empty-subtext="描述你的问题，我将输出完整建模方案和论文"
@@ -24,114 +24,91 @@
             <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">§ 执行进度</span>
             <ChevronDown class="h-3 w-3 text-muted-foreground transition-transform" :class="{ 'rotate-180': progressOpen }" />
           </div>
-          <div v-if="progressOpen" class="p-4"><UserStepper :steps="agentSteps" /></div>
-        </div>
-
-        <div v-if="paperReady">
-          <div class="border-b border-border px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-accent/50" @click="paperSectionOpen = !paperSectionOpen">
-            <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">§ 论文</span>
-            <div class="flex items-center gap-1.5">
-              <div class="flex gap-1.5 mr-1">
-                <button class="font-mono text-[10px] text-primary hover:underline" @click.stop="showPaper = !showPaper">
-                  {{ showPaper ? '收起' : '查看' }}
-                </button>
-                <button class="font-mono text-[10px] text-primary hover:underline" @click.stop="downloadPaper">下载 .tex</button>
-              </div>
-              <ChevronDown class="h-3 w-3 text-muted-foreground transition-transform" :class="{ 'rotate-180': paperSectionOpen }" />
-            </div>
+          <div v-if="progressOpen" class="p-4">
+            <UserStepper :steps="agentSteps" />
+            <p v-if="taskStore.wsStatus !== 'connected' && chatSession.isRunning" class="mt-3 font-mono text-[10px] text-muted-foreground">
+              WS 状态: {{ taskStore.wsStatus }}
+            </p>
           </div>
-          <div v-if="paperSectionOpen && showPaper" class="p-3">
-            <pre class="text-[11px] font-mono leading-relaxed whitespace-pre-wrap text-muted-foreground">{{ paperContent }}</pre>
-          </div>
-        </div>
-
-        <div>
-          <div class="border-b border-border px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-accent/50" @click="notesOpen = !notesOpen">
-            <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">§ 笔记</span>
-            <ChevronDown class="h-3 w-3 text-muted-foreground transition-transform" :class="{ 'rotate-180': notesOpen }" />
-          </div>
-          <div v-if="notesOpen" class="overflow-hidden"><NotebookArea :cells="notebookCells" /></div>
         </div>
       </div>
     </Transition>
-    <Teleport to="body">
-      <div v-if="paperFullscreen" class="fixed inset-0 z-50 bg-background/95 backdrop-blur flex flex-col" @keydown.escape="paperFullscreen = false">
-        <div class="flex items-center justify-between px-6 py-3 border-b">
-          <span class="font-mono text-xs tracking-wider text-muted-foreground">LaTeX 论文</span>
-          <div class="flex gap-3">
-            <button class="font-mono text-xs text-primary hover:underline" @click="downloadPaper">下载 .tex</button>
-            <button class="font-mono text-xs text-muted-foreground hover:text-foreground" @click="paperFullscreen = false">关闭</button>
-          </div>
-        </div>
-        <div class="flex-1 overflow-y-auto p-8 max-w-4xl mx-auto w-full">
-          <pre class="text-sm font-mono leading-relaxed whitespace-pre-wrap">{{ paperContent }}</pre>
-        </div>
-      </div>
-    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { PanelRight, ChevronDown } from "lucide-vue-next";
 import ChatArea from "@/components/ChatArea.vue";
 import UserStepper from "@/components/UserStepper.vue";
-import NotebookArea from "@/components/NotebookArea.vue";
 import { useChatSessionStore } from "@/stores/chatSession";
+import { useTaskStore } from "@/stores/task";
 import { createTask } from "@/apis/commonApi";
 import type { Message } from "@/utils/response";
 
 const chatSession = useChatSessionStore();
+const taskStore = useTaskStore();
 
 const rightPanelOpen = ref(true);
 const progressOpen = ref(true);
-const paperSectionOpen = ref(true);
-const notesOpen = ref(true);
 
-const agentSteps = ref([
-  { id: "1", label: "问题分类", status: "wait" as const, description: "识别问题类型与复杂度" },
-  { id: "2", label: "知识检索", status: "wait" as const, description: "从知识库检索方法、论文和模板" },
-  { id: "3", label: "问题分析", status: "wait" as const, description: "深度分析问题结构" },
-  { id: "4", label: "模型构建", status: "wait" as const, description: "选择或设计数学模型" },
-  { id: "5", label: "求解计算", status: "wait" as const, description: "编写代码,执行计算" },
-  { id: "6", label: "验证分析", status: "wait" as const, description: "模型验证与鲁棒性分析" },
-  { id: "7", label: "论文写作", status: "wait" as const, description: "生成规范论文" },
-]);
+// 当前 solution 会话关联的后端 task_id（本地映射，不持久化后端任务）
+const currentTaskId = ref<string | null>(null);
 
-const notebookCells = ref<Array<{ cell_type: string; source?: string }>>([]);
-
-const paperReady = ref(false);
-const showPaper = ref(false);
-const paperContent = ref("");
-const paperFullscreen = ref(false);
-
-const mockReplies = [
-  "📋 **已提交建模任务，智能体正在分析中...**\n\n正在启动多智能体编排流程。后端处理完成后结果将自动显示。",
+// 步骤定义（与后端 node_meta 对齐）
+const stepDefs = [
+  { key: "问题分析", label: "问题分析", description: "识别问题类型,理解题意" },
+  { key: "模型构建", label: "模型构建", description: "选择并建立数学模型" },
+  { key: "求解计算", label: "求解计算", description: "生成并执行求解代码" },
+  { key: "验证分析", label: "验证分析", description: "检验模型鲁棒性" },
+  { key: "论文写作", label: "论文写作", description: "生成结构化论文" },
 ];
 
-let replyIndex = 0;
+const agentSteps = computed(() => {
+  const current = taskStore.currentStep;
+  // 后端 stage 可能是「问题分析/知识检索/计划制定/模型构建/求解计算/验证分析/论文写作/整合输出」
+  // 映射到 5 个主步骤：找到第一个 >= current 的主步骤作为 active
+  const order = stepDefs.map((s) => s.key);
+  let activeIdx = order.indexOf(current);
+  if (current === "已完成") {
+    return stepDefs.map((s, i) => ({ id: String(i + 1), label: s.label, description: s.description, status: "done" as const }));
+  }
+  // 若 current 不在主步骤里（如「知识检索」「计划制定」），按最接近的归类
+  if (activeIdx === -1) {
+    if (current.includes("分析") || current.includes("检索") || current.includes("计划")) activeIdx = 0;
+    else if (current.includes("模型")) activeIdx = 1;
+    else if (current.includes("求解") || current.includes("计算")) activeIdx = 2;
+    else if (current.includes("验证")) activeIdx = 3;
+    else if (current.includes("写作") || current.includes("整合") || current.includes("输出")) activeIdx = 4;
+  }
+  return stepDefs.map((s, i) => ({
+    id: String(i + 1),
+    label: s.label,
+    description: s.description,
+    status:
+      activeIdx === -1
+        ? ("wait" as const)
+        : i < activeIdx
+        ? ("done" as const)
+        : i === activeIdx
+        ? ("active" as const)
+        : ("wait" as const),
+  }));
+});
+
+// 聊天面板 = 用户在 solution 会话发的消息 + 该 task 的进度/最终答案
+const displayMessages = computed<Message[]>(() => {
+  const userMsgs = chatSession.activeSolutionMessages;
+  const taskMsgs = currentTaskId.value ? taskStore.messages : [];
+  return [...userMsgs, ...taskMsgs];
+});
 
 function generateId() {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function triggerMockReply(sessionId: string) {
-  if (replyIndex < mockReplies.length) {
-    const reply: Message = {
-      id: generateId(),
-      msg_type: "agent",
-      content: mockReplies[replyIndex],
-      created_at: new Date().toISOString(),
-    };
-    chatSession.addMessage("solution", sessionId, reply);
-    replyIndex++;
-  }
-  chatSession.isRunning = false;
-}
-
-function handleUserSend(text: string) {
+async function handleUserSend(text: string) {
   let sessionId = chatSession.activeSolutionId;
-
   if (!sessionId) {
     sessionId = chatSession.createSession("solution");
   }
@@ -146,36 +123,42 @@ function handleUserSend(text: string) {
 
   chatSession.isRunning = true;
 
-  const existingMessages = chatSession.activeSolutionMessages;
-  const hasAgentReply = existingMessages.some((m) => m.msg_type === "agent");
-  if (hasAgentReply && existingMessages[existingMessages.length - 1].msg_type !== "user") {
+  try {
+    const res = await createTask({ problem: text, mode: "execute" });
+    const taskId = res.data?.task_id ?? res.data?.data?.task_id;
+    if (!taskId) throw new Error("未返回 task_id");
+    currentTaskId.value = taskId;
+    // 连接 WS 实时接收进度与最终答案；isRunning 由 task_end 事件驱动
+    taskStore.connectWebSocket(taskId);
+  } catch (e: any) {
+    chatSession.addMessage("solution", sessionId, {
+      id: generateId(),
+      msg_type: "system",
+      type: "error",
+      content: `⚠️ 创建任务失败：${e?.message ?? "后端不可达，请确认已启动 (uvicorn app.main:app --port 8000)"}`,
+      created_at: new Date().toISOString(),
+    } as Message);
     chatSession.isRunning = false;
-    return;
   }
-
-  createTask({ problem: text, mode: "execute" })
-    .then(() => {
-      triggerMockReply(sessionId);
-    })
-    .catch(() => {
-      triggerMockReply(sessionId);
-    });
 }
 
-function downloadPaper() {
-  const blob = new Blob([paperContent.value], { type: "text/x-tex" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "math-model-paper.tex";
-  a.click();
-  URL.revokeObjectURL(url);
-}
+// task_end 后 taskStore.isRunning 置 false，同步到本地运行态
+watch(
+  () => taskStore.isRunning,
+  (running) => {
+    chatSession.isRunning = running;
+  },
+);
 
 onMounted(() => {
+  // 刷新/重新进入时恢复最近的 solution 会话，避免空白
   if (!chatSession.activeSolutionId && chatSession.sortedSolutionSessions.length > 0) {
     chatSession.switchSession("solution", chatSession.sortedSolutionSessions[0].id);
   }
+});
+
+onUnmounted(() => {
+  taskStore.closeWebSocket();
 });
 </script>
 
@@ -184,7 +167,6 @@ onMounted(() => {
 .slide-right-leave-active {
   transition: all 0.25s ease;
 }
-
 .slide-right-enter-from,
 .slide-right-leave-to {
   transform: translateX(100%);

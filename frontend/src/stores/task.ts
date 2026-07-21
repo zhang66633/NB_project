@@ -3,7 +3,12 @@ import { TaskWebSocket } from "@/utils/websocket";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
+function genId() {
+  return `tmsg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export const useTaskStore = defineStore("task", () => {
+  // 每个 task 的进度/结果消息（system 进度 + agent 最终答案）
   const messagesByTask = ref<Record<string, Message[]>>({});
   const currentTaskId = ref<string | null>(null);
   let ws: TaskWebSocket | null = null;
@@ -32,50 +37,51 @@ export const useTaskStore = defineStore("task", () => {
     currentTaskId.value = taskId;
   }
 
+  function now() {
+    return new Date().toISOString();
+  }
+
   function handleProgressEvent(taskId: string, data: Record<string, any>) {
     const event = data?.event;
-    // 节点完成：更新对应进度条目的状态
+
+    // 节点完成：追加一条进度 system 消息 + 更新当前步骤
     if (event === "node_end") {
-      const idx = messagesByTask.value[taskId]?.findIndex((m) => m.id === data.id) ?? -1;
-      if (idx !== -1) {
-        messagesByTask.value[taskId][idx] = {
-          ...messagesByTask.value[taskId][idx],
-          status: "completed",
-          content: `[${data.data?.stage}] ${data.data?.title}：${data.data?.desc}`,
-        };
-      } else if (data.data?.title) {
-        appendMessage(taskId, {
-          id: data.id,
-          msg_type: "system",
-          status: "completed",
-          content: `[${data.data?.stage}] ${data.data?.title}：${data.data?.desc}`,
-        });
-      }
-      currentStep.value = data.data?.stage || currentStep.value;
+      const stage = data.data?.stage ?? "";
+      const title = data.data?.title ?? stage;
+      const desc = data.data?.desc ?? "";
+      appendMessage(taskId, {
+        id: data.id ?? genId(),
+        msg_type: "system",
+        type: "info",
+        content: `[${stage}] ${title}${desc ? "：" + desc : ""}`,
+        created_at: now(),
+      } as Message);
+      currentStep.value = stage || currentStep.value;
+      return;
     }
-    // 任务结束信号：停止运行态并展示最终答案
+
+    // 任务结束：停止运行态，展示最终答案（agent 气泡，走 Markdown/LaTeX 渲染）
     if (event === "task_end") {
       isRunning.value = false;
       completed.value = true;
       currentStep.value = "已完成";
       if (data.data?.final_response) {
         appendMessage(taskId, {
-          id: "ai-final-" + taskId,
-          msg_type: "ai",
+          id: "final-" + taskId,
+          msg_type: "agent",
           content: data.data.final_response,
+          created_at: now(),
         });
       } else if (data.data?.message) {
         appendMessage(taskId, {
-          id: "sys-error-" + taskId,
+          id: genId(),
           msg_type: "system",
+          type: "error",
           content: "任务失败：" + data.data.message,
-        });
+          created_at: now(),
+        } as Message);
       }
       return;
-    }
-    // 其它事件（含 node_start/progress 等）带 id 的作为消息追加
-    if (data && typeof data === "object" && "id" in (data as Record<string, unknown>)) {
-      appendMessage(taskId, data as Message);
     }
   }
 
@@ -85,6 +91,7 @@ export const useTaskStore = defineStore("task", () => {
     ensureTaskBucket(taskId);
     isRunning.value = true;
     completed.value = false;
+    currentStep.value = "";
 
     const baseUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8000/api/ws";
     const wsUrl = `${baseUrl}/task/${taskId}`;
@@ -103,8 +110,7 @@ export const useTaskStore = defineStore("task", () => {
   }
 
   return {
-    messages, wsStatus, isRunning, completed, currentStep,
-    connectWebSocket, closeWebSocket,
-    setCurrentTask, appendMessage,
+    messages, wsStatus, isRunning, completed, currentStep, currentTaskId,
+    connectWebSocket, closeWebSocket, setCurrentTask, appendMessage,
   };
 });

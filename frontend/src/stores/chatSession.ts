@@ -169,10 +169,21 @@ export const useChatSessionStore = defineStore(
       }
     }
 
-    function addMessageToActive(mode: SessionMode, msg: Message) {
-      const activeId = getActiveId(mode).value;
-      if (!activeId) return;
-      addMessage(mode, activeId, msg);
+    /** 流式更新同一条消息（就地累加/替换 content，或更新 streaming 标记）。 */
+    function updateMessage(
+      mode: SessionMode,
+      sessionId: string,
+      msgId: string,
+      patch: Partial<Pick<Message, "content" | "streaming">>,
+    ) {
+      const list = getSessions(mode).value;
+      const session = list.find((s) => s.id === sessionId);
+      if (!session) return;
+      const msg = session.messages.find((m) => m.id === msgId);
+      if (!msg) return;
+      if (patch.content !== undefined) msg.content = patch.content;
+      if (patch.streaming !== undefined) msg.streaming = patch.streaming;
+      session.updatedAt = now();
     }
 
     function clearActive(mode: SessionMode) {
@@ -187,7 +198,7 @@ export const useChatSessionStore = defineStore(
       activeChatSession, activeTeachSession, activeSolutionSession,
       activeChatMessages, activeTeachMessages, activeSolutionMessages,
       createSession, switchSession, deleteSession, renameSession,
-      addMessage, addMessageToActive, clearActive,
+      addMessage, updateMessage, clearActive,
       getSessions, getActiveId, getSortedSessions, getActiveSession, getActiveMessages,
     };
   },

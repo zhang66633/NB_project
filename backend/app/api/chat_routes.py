@@ -104,8 +104,13 @@ async def _event_stream(req: ChatRequest, api_key_config: dict | None = None):
     except Exception as e:  # noqa: BLE001
         logger.exception("chat stream failed")
         err = str(e)
-        if "api_key" in err.lower() or "api key" in err.lower() or "401" in err:
-            err = "LLM API Key 未配置或无效，请在后端 data/apikeys.json 配置默认 Key"
+        # 给出更友好的错误提示
+        if "incorrect api key" in err.lower() or "invalid api key" in err.lower():
+            err = "API Key 无效，请在首页重新配置你的 Key"
+        elif "401" in err or "403" in err:
+            err = f"API Key 验证失败 (401)，请检查 Key 是否正确。原始错误: {err[:200]}"
+        elif "api_key" in err.lower() or "api key" in err.lower():
+            err = f"API Key 错误: {err[:300]}"
         yield f"data: {json.dumps({'error': err}, ensure_ascii=False)}\n\n"
 
 

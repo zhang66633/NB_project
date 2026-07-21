@@ -47,6 +47,9 @@ class AgentState(TypedDict):
     verification_feedback: Optional[str]
     rollback_target: Optional[str]
 
+    # --- 用户 API Key 配置 ---
+    api_key_config: Optional[dict]
+
     # --- 最终输出 ---
     final_response: Optional[str]
 
@@ -55,6 +58,7 @@ def create_initial_state(
     problem_raw: str,
     mode: Literal["teach", "execute"] = "execute",
     session_id: str = "default",
+    api_key_config: dict | None = None,
 ) -> AgentState:
     """创建初始状态，填好默认值。"""
     return AgentState(
@@ -81,5 +85,6 @@ def create_initial_state(
         verification_passed=None,
         verification_feedback=None,
         rollback_target=None,
+        api_key_config=api_key_config,
         final_response=None,
     )

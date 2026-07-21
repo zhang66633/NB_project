@@ -12,13 +12,14 @@
 import json
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from .schemas.request import ChatRequest
 from ..core.llm.factory import LLMFactory
 from ..core.prompts.agent_prompts import MARKDOWN_RULES, TEACH_SHARED_RULES
+from ..auth import GitHubUser, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -76,10 +77,10 @@ def _to_lc_messages(req: ChatRequest) -> list:
     return msgs
 
 
-async def _event_stream(req: ChatRequest):
+async def _event_stream(req: ChatRequest, api_key_config: dict | None = None):
     """SSE 生成器：流式输出 LLM 增量。"""
     try:
-        llm = LLMFactory.create("chat")
+        llm = LLMFactory.create("chat", api_key_config=api_key_config)
         messages = _to_lc_messages(req)
 
         # 预留 RAG：当前直通。后续在此检索 kb_search 并把结果注入 system context。
@@ -109,14 +110,15 @@ async def _event_stream(req: ChatRequest):
 
 
 @chat_router.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, user: GitHubUser | None = Depends(get_current_user)):
     """自由问答 SSE 流式接口。"""
     # 检查是否有可用的 API Key
-    from .router import get_active_api_key
-    active_key = get_active_api_key()
+    from .router import get_active_api_key, _resolve_user_id
+    uid = _resolve_user_id(user=user)
+    active_key = get_active_api_key(uid)
     if not active_key:
         async def no_key():
-            yield f"data: {json.dumps({'error': '请先在 API Keys 页面配置你的 API Key，然后再发送消息。'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'error': '请先在首页配置你的 API Key 后再发送消息。'}, ensure_ascii=False)}\n\n"
         return StreamingResponse(no_key(), media_type="text/event-stream")
 
     if not req.messages:
@@ -125,7 +127,7 @@ async def chat(req: ChatRequest):
         return StreamingResponse(empty(), media_type="text/event-stream")
 
     return StreamingResponse(
-        _event_stream(req),
+        _event_stream(req, api_key_config=active_key),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

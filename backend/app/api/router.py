@@ -9,10 +9,10 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Depends, Query
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Depends, Query, Request
 from fastapi.responses import FileResponse
 
-from .schemas.request import CreateTaskRequest, ApiKeyCreate
+from .schemas.request import CreateTaskRequest, ApiKeyCreate, ApiKeyQuickCreate
 from .schemas.response import (
     TaskResponse,
     MessageResponse,
@@ -122,15 +122,20 @@ async def health_check():
 # ── Tasks ────────────────────────────────────────────────────────
 
 @api_router.post("/tasks", response_model=TaskResponse)
-async def create_task(req: CreateTaskRequest, background_tasks: BackgroundTasks):
+async def create_task(
+    req: CreateTaskRequest,
+    background_tasks: BackgroundTasks,
+    user: GitHubUser | None = Depends(get_current_user),
+):
     """创建建模任务，后台启动编排器。"""
     # 检查是否有可用的 API Key
-    active_key = get_active_api_key()
+    uid = _resolve_user_id(user=user)
+    active_key = get_active_api_key(uid)
     if not active_key:
         raise HTTPException(
             status_code=400,
-            detail="请先在 API Keys 页面配置你的 API Key，"
-                   "然后再提交任务。点击导航栏「API Keys」进入配置页面。",
+            detail="请先在首页配置你的 API Key，"
+                   "然后再提交任务。",
         )
 
     session_mgr = get_session_manager()
@@ -140,7 +145,7 @@ async def create_task(req: CreateTaskRequest, background_tasks: BackgroundTasks)
     # 在独立线程中运行编排器（节点含同步阻塞调用 llm.invoke / subprocess），
     # 以免阻塞事件循环导致 HTTP 响应体无法刷新、WS 进度卡住
     asyncio.create_task(
-        asyncio.to_thread(_run_orchestrator_sync, task_id, req.problem, req.mode)
+        asyncio.to_thread(_run_orchestrator_sync, task_id, req.problem, req.mode, uid)
     )
 
     return TaskResponse(**task)
@@ -177,9 +182,9 @@ async def list_tasks():
 
 # ── API Keys ─────────────────────────────────────────────────────
 
-_api_keys_store: dict[str, dict] = {}  # key_id → {name, key, provider, model_name, masked_key}
+_api_keys_store: dict[str, dict] = {}  # user_id → {key_id: {name, key, provider, model_name, masked_key}}
+_user_default_keys: dict[str, str] = {}  # user_id → default_key_id
 _api_keys_file = None
-_default_key_id = None
 
 
 def _get_api_keys_path() -> Path:
@@ -191,16 +196,24 @@ def _get_api_keys_path() -> Path:
 
 
 def _load_api_keys():
-    global _api_keys_store, _default_key_id
+    global _api_keys_store, _user_default_keys
     path = _get_api_keys_path()
     if path.exists():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             _api_keys_store = data.get("keys", {})
-            _default_key_id = data.get("default_key_id")
+            _user_default_keys = data.get("default_keys", {})
+            # 兼容旧格式: 如果 keys 是 key_id→{...}，转换为 user_id→{key_id→{...}}
+            if _api_keys_store and not any(isinstance(v, dict) and any(
+                isinstance(vv, dict) and "key" in vv for vv in v.values()
+            ) for v in _api_keys_store.values() if isinstance(v, dict)):
+                # 旧格式: {key_id: {...}} → 新格式: {"legacy": {key_id: {...}}}
+                _api_keys_store = {"legacy": _api_keys_store}
+                if _user_default_keys and not isinstance(list(_user_default_keys.values())[0] if _user_default_keys else None, str):
+                    _user_default_keys = {"legacy": list(_user_default_keys.values())[0] if isinstance(list(_user_default_keys.values())[0], str) else next(iter(_api_keys_store.get("legacy", {}).keys()), None)}
         except Exception:
             _api_keys_store = {}
-            _default_key_id = None
+            _user_default_keys = {}
 
 
 def _save_api_keys():
@@ -208,24 +221,114 @@ def _save_api_keys():
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "keys": _api_keys_store,
-        "default_key_id": _default_key_id,
+        "default_keys": _user_default_keys,
     }
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def get_active_api_key() -> dict | None:
-    """获取当前活动的 API Key（优先默认 key，否则返回第一个）。"""
+def _resolve_user_id(request: Request | None = None, user: GitHubUser | None = None) -> str:
+    """Resolve a user ID for API key scoping.
+
+    - Logged-in GitHub user → use login name
+    - Guest → use "guest" (shared guest pool)
+    """
+    if user and user.login:
+        return user.login
+    return "guest"
+
+
+def get_active_api_key(user_id: str | None = None) -> dict | None:
+    """获取指定用户的活跃 API Key（优先默认 key，否则返回第一个）。"""
     _load_api_keys()
-    if _default_key_id and _default_key_id in _api_keys_store:
-        return _api_keys_store[_default_key_id]
-    if _api_keys_store:
-        return next(iter(_api_keys_store.values()))
-    return None
+    uid = user_id or "guest"
+    user_keys = _api_keys_store.get(uid, {})
+    if not user_keys:
+        return None
+    default_id = _user_default_keys.get(uid)
+    if default_id and default_id in user_keys:
+        return user_keys[default_id]
+    # 返回用户的第一个 key
+    return next(iter(user_keys.values()))
+
+
+@api_router.get("/apikeys/mine")
+async def get_my_api_key(user: GitHubUser | None = Depends(get_current_user)):
+    """获取当前用户的 API Key 状态（首页快速检查用）。"""
+    _load_api_keys()
+    uid = _resolve_user_id(user=user)
+    user_keys = _api_keys_store.get(uid, {})
+    if not user_keys:
+        return {"has_key": False, "key": None}
+    # 返回默认 key 或第一个
+    active = get_active_api_key(uid)
+    return {
+        "has_key": True,
+        "key": {
+            "masked_key": active.get("masked_key", "****") if active else "****",
+            "provider": active.get("provider", "") if active else "",
+            "model_name": active.get("model_name", "") if active else "",
+        } if active else None,
+    }
+
+
+@api_router.post("/apikeys/quick")
+async def quick_add_api_key(
+    req: ApiKeyQuickCreate,
+    user: GitHubUser | None = Depends(get_current_user),
+):
+    """快速添加 API Key — 只需粘贴 Key，自动识别服务商。"""
+    _load_api_keys()
+    uid = _resolve_user_id(user=user)
+
+    # 自动识别 provider
+    key = req.key.strip()
+    if key.startswith("sk-ant"):
+        provider = "anthropic"
+    elif "deepseek" in key.lower():
+        provider = "openai"
+    else:
+        provider = "openai"  # 默认 OpenAI 兼容
+
+    # 自动推断模型名
+    model_name = "deepseek-chat"  # 默认
+    if provider == "anthropic":
+        model_name = "claude-sonnet-4-6"
+
+    key_id = str(uuid.uuid4())[:8]
+    masked = key[:4] + "****" + key[-4:] if len(key) > 8 else "****"
+
+    if uid not in _api_keys_store:
+        _api_keys_store[uid] = {}
+
+    _api_keys_store[uid][key_id] = {
+        "name": req.name or f"我的 Key ({masked})",
+        "key": key,
+        "provider": provider,
+        "model_name": model_name,
+        "masked_key": masked,
+    }
+
+    # 自动设为该用户的默认
+    _user_default_keys[uid] = key_id
+
+    _save_api_keys()
+
+    return {
+        "success": True,
+        "id": key_id,
+        "masked_key": masked,
+        "provider": provider,
+        "model_name": model_name,
+        "message": "API Key 已激活，Agent 将使用此 Key 进行对话。",
+    }
 
 
 @api_router.get("/apikeys", response_model=list[ApiKeyResponse])
-async def list_api_keys():
+async def list_api_keys(user: GitHubUser | None = Depends(get_current_user)):
     _load_api_keys()
+    uid = _resolve_user_id(user=user)
+    user_keys = _api_keys_store.get(uid, {})
+    default_id = _user_default_keys.get(uid)
     return [
         ApiKeyResponse(
             id=kid,
@@ -233,19 +336,23 @@ async def list_api_keys():
             provider=v.get("provider", "openai"),
             model_name=v.get("model_name", "deepseek-chat"),
             masked_key=v.get("masked_key", "****"),
-            is_default=kid == _default_key_id,
+            is_default=kid == default_id,
         )
-        for kid, v in _api_keys_store.items()
+        for kid, v in user_keys.items()
     ]
 
 
 @api_router.post("/apikeys", response_model=ApiKeyResponse)
-async def create_api_key(req: ApiKeyCreate):
+async def create_api_key(req: ApiKeyCreate, user: GitHubUser | None = Depends(get_current_user)):
     _load_api_keys()
+    uid = _resolve_user_id(user=user)
     key_id = str(uuid.uuid4())[:8]
     masked = req.key[:4] + "****" + req.key[-4:] if len(req.key) > 8 else "****"
 
-    _api_keys_store[key_id] = {
+    if uid not in _api_keys_store:
+        _api_keys_store[uid] = {}
+
+    _api_keys_store[uid][key_id] = {
         "name": req.name,
         "key": req.key,
         "provider": req.provider,
@@ -253,8 +360,8 @@ async def create_api_key(req: ApiKeyCreate):
         "masked_key": masked,
     }
 
-    if not _default_key_id:
-        _default_key_id = key_id
+    if not _user_default_keys.get(uid):
+        _user_default_keys[uid] = key_id
 
     _save_api_keys()
 
@@ -264,29 +371,32 @@ async def create_api_key(req: ApiKeyCreate):
         provider=req.provider,
         model_name=req.model_name,
         masked_key=masked,
-        is_default=key_id == _default_key_id,
+        is_default=key_id == _user_default_keys.get(uid),
     )
 
 
 @api_router.delete("/apikeys/{key_id}")
-async def delete_api_key(key_id: str):
+async def delete_api_key(key_id: str, user: GitHubUser | None = Depends(get_current_user)):
     _load_api_keys()
-    if key_id not in _api_keys_store:
+    uid = _resolve_user_id(user=user)
+    user_keys = _api_keys_store.get(uid, {})
+    if key_id not in user_keys:
         raise HTTPException(status_code=404, detail="API Key 不存在")
-    del _api_keys_store[key_id]
-    if _default_key_id == key_id:
-        _default_key_id = next(iter(_api_keys_store.keys()), None)
+    del _api_keys_store[uid][key_id]
+    if _user_default_keys.get(uid) == key_id:
+        _user_default_keys[uid] = next(iter(_api_keys_store[uid].keys()), None) if _api_keys_store[uid] else None
     _save_api_keys()
     return {"success": True, "message": "API Key 已删除"}
 
 
 @api_router.post("/apikeys/{key_id}/default")
-async def set_default_api_key(key_id: str):
+async def set_default_api_key(key_id: str, user: GitHubUser | None = Depends(get_current_user)):
     _load_api_keys()
-    if key_id not in _api_keys_store:
+    uid = _resolve_user_id(user=user)
+    user_keys = _api_keys_store.get(uid, {})
+    if key_id not in user_keys:
         raise HTTPException(status_code=404, detail="API Key 不存在")
-    global _default_key_id
-    _default_key_id = key_id
+    _user_default_keys[uid] = key_id
     _save_api_keys()
     return {"success": True, "message": "已设为默认"}
 
@@ -354,19 +464,25 @@ async def get_image(run_id: str, filename: str):
 
 # ── Background orchestrator runner ────────────────────────────────
 
-def _run_orchestrator_sync(task_id: str, problem: str, mode: str):
+def _run_orchestrator_sync(task_id: str, problem: str, mode: str, user_id: str = "guest"):
     """在线程池中运行的同步入口（节点含阻塞调用，必须脱离事件循环）。"""
-    asyncio.run(_run_orchestrator(task_id, problem, mode))
+    asyncio.run(_run_orchestrator(task_id, problem, mode, user_id))
 
 
-async def _run_orchestrator(task_id: str, problem: str, mode: str):
+async def _run_orchestrator(task_id: str, problem: str, mode: str, user_id: str = "guest"):
     """在后台运行 LangGraph 编排器。"""
     try:
         from app.core.state import create_initial_state
         from app.core.workflow import get_orchestrator
 
+        # 获取该用户的活跃 API Key
+        active_key = get_active_api_key(user_id)
+
         orchestrator = get_orchestrator()
-        state = create_initial_state(problem_raw=problem, mode=mode, session_id=task_id)
+        state = create_initial_state(
+            problem_raw=problem, mode=mode, session_id=task_id,
+            api_key_config=active_key,
+        )
 
         # 流式运行 — 每个节点完成后立即写入进度消息
         session_mgr = get_session_manager()

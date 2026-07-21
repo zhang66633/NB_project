@@ -11,20 +11,45 @@
       </div>
     </div>
 
-    <!-- API Key not configured banner -->
-    <div v-if="noApiKey" class="mx-auto max-w-4xl px-6 sm:px-10 pt-4">
-      <div class="flex items-start gap-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3">
-        <Key class="h-5 w-5 shrink-0 text-blue-600 mt-0.5" />
-        <div class="flex-1">
-          <p class="text-sm text-blue-800 font-medium">尚未配置 API Key</p>
-          <p class="text-xs text-blue-700 mt-0.5">
-            你需要自己的 DeepSeek/OpenAI API Key 才能使用智能体。
-            <router-link to="/apikeys" class="underline font-medium hover:text-blue-900">前往配置 →</router-link>
-          </p>
-        </div>
-        <button class="shrink-0 text-blue-500 hover:text-blue-700 transition-colors" @click="dismissApiKeyHint">
-          <X class="h-4 w-4" />
+    <!-- API Key 快速配置区域 -->
+    <div class="mx-auto max-w-4xl px-6 sm:px-10 pt-4">
+      <!-- 已配置状态 -->
+      <div v-if="myKey.has_key" class="flex items-center gap-3 rounded-md border border-green-200 bg-green-50 px-4 py-2.5">
+        <CheckCircle2 class="h-5 w-5 shrink-0 text-green-600" />
+        <span class="text-sm text-green-800 font-medium">API Key 已激活</span>
+        <span class="text-xs text-green-700 font-mono">{{ myKey.key?.masked_key }}</span>
+        <span class="text-xs text-green-600">· {{ myKey.key?.provider }} · {{ myKey.key?.model_name }}</span>
+        <button class="ml-auto text-xs text-green-600 hover:text-green-800 underline shrink-0" @click="showKeyInput = !showKeyInput">
+          {{ showKeyInput ? '取消' : '更换' }}
         </button>
+      </div>
+
+      <!-- 未配置 / 更换 Key 输入区 -->
+      <div v-if="!myKey.has_key || showKeyInput" class="rounded-md border border-border bg-card p-4">
+        <div class="flex items-center gap-3 flex-wrap">
+          <Key class="h-5 w-5 shrink-0 text-muted-foreground" />
+          <input
+            v-model="keyInput"
+            type="password"
+            placeholder="粘贴你的 API Key，例如 sk-..."
+            class="flex-1 min-w-[260px] h-10 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            @keydown.enter="activateKey"
+          />
+          <button
+            class="inline-flex items-center gap-1.5 rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background hover:bg-foreground/90 transition-colors disabled:opacity-50 shrink-0"
+            :disabled="!keyInput.trim() || activating"
+            @click="activateKey"
+          >
+            <Loader2 v-if="activating" class="h-4 w-4 animate-spin" />
+            <Zap v-else class="h-4 w-4" />
+            {{ myKey.has_key ? '更新并激活' : '激活 Key' }}
+          </button>
+        </div>
+        <p class="mt-2 text-xs text-muted-foreground">
+          支持 DeepSeek、OpenAI、Anthropic 等 OpenAI 兼容 API。
+          从 <a href="https://platform.deepseek.com" target="_blank" class="underline">platform.deepseek.com</a> 获取 Key，Key 仅保存在本地服务器。
+        </p>
+        <p v-if="activateError" class="mt-1 text-xs text-red-600">{{ activateError }}</p>
       </div>
     </div>
 
@@ -172,9 +197,10 @@ s.t.  Σᵢ xᵢⱼ = Dⱼ,  ∀j ∈ J
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { ArrowRight, ShieldAlert, X, Key } from "lucide-vue-next";
+import { ArrowRight, ShieldAlert, X, Key, Zap, Loader2, CheckCircle2 } from "lucide-vue-next";
 import { getKBStats, type KBStats } from "@/apis/knowledgeApi";
 import { getApiKeys } from "@/apis/apiKeyApi";
+import request from "@/utils/request";
 
 const router = useRouter();
 const route = useRoute();
@@ -185,8 +211,39 @@ watch(() => route.query.denied, (val) => {
 }, { immediate: true });
 function dismissDenied() { deniedMessage.value = ""; router.replace({ query: {} }); }
 
-const noApiKey = ref(false);
-function dismissApiKeyHint() { noApiKey.value = false; }
+const myKey = ref<{ has_key: boolean; key: { masked_key: string; provider: string; model_name: string } | null }>({ has_key: false, key: null });
+const keyInput = ref("");
+const activating = ref(false);
+const activateError = ref("");
+const showKeyInput = ref(false);
+
+async function checkMyKey() {
+  try {
+    const r: any = await request.get("/apikeys/mine");
+    myKey.value = r.data || r;
+    showKeyInput.value = !myKey.value.has_key;
+  } catch {
+    myKey.value = { has_key: false, key: null };
+    showKeyInput.value = true;
+  }
+}
+
+async function activateKey() {
+  if (!keyInput.value.trim() || activating.value) return;
+  activating.value = true;
+  activateError.value = "";
+  try {
+    await request.post("/apikeys/quick", { key: keyInput.value.trim() });
+    keyInput.value = "";
+    await checkMyKey();
+  } catch (e: any) {
+    activateError.value = e?.response?.data?.detail || e?.message || "激活失败，请检查 Key 是否正确";
+  } finally {
+    activating.value = false;
+  }
+}
+
+const dismissedApiKey = ref(false);
 
 const statsReady = ref(false);
 
@@ -222,12 +279,6 @@ onMounted(async () => {
   }
 
   // API Key 检查
-  try {
-    const keys: any = await getApiKeys();
-    const list = keys.data || keys || [];
-    noApiKey.value = list.length === 0;
-  } catch {
-    noApiKey.value = true;
-  }
+  await checkMyKey();
 });
 </script>

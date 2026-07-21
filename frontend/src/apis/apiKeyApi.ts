@@ -1,5 +1,13 @@
 import request from "@/utils/request";
 
+export function getMyApiKey() {
+  return request.get("/apikeys/mine");
+}
+
+export function quickAddApiKey(key: string, name?: string) {
+  return request.post("/apikeys/quick", { key, name: name || "" });
+}
+
 export function getApiKeys() {
   return request.get("/apikeys");
 }

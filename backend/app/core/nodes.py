@@ -69,7 +69,7 @@ def classify_problem(state: AgentState) -> dict:
     task_id = state["session_id"]
     _pub_event(task_id, "node_start", "classify")
 
-    llm = get_llm("classifier")
+    llm = get_llm("classifier", state.get("api_key_config"))
     prompt = CLASSIFIER_USER_TEMPLATE.format(problem=state["problem_raw"])
 
     response = llm.invoke([
@@ -212,7 +212,7 @@ def plan_execution(state: AgentState) -> dict:
     """根据分类和知识库，动态生成子 agent 执行计划。"""
     task_id = state["session_id"]
     _pub_event(task_id, "node_start", "plan_execution")
-    llm = get_llm("planner")
+    llm = get_llm("planner", state.get("api_key_config"))
 
     # 构建知识库上下文
     methods_str = "\n".join(
@@ -285,7 +285,7 @@ def analysis_agent_node(state: AgentState) -> dict:
     idx = _next_step(state)
     task_id = state["session_id"]
     _pub_event(task_id, "node_start", "analysis_agent", {"step": idx + 1})
-    llm = get_llm("analysis")
+    llm = get_llm("analysis", state.get("api_key_config"))
 
     # 构建知识库上下文
     methods_str = "\n".join(
@@ -346,7 +346,7 @@ def modeling_agent_node(state: AgentState) -> dict:
     idx = _next_step(state)
     task_id = state["session_id"]
     _pub_event(task_id, "node_start", "modeling_agent", {"step": idx + 1})
-    llm = get_llm("modeling")
+    llm = get_llm("modeling", state.get("api_key_config"))
 
     # 构建知识库上下文
     methods_str = "\n".join(
@@ -409,7 +409,7 @@ def solving_agent_node(state: AgentState) -> dict:
     idx = _next_step(state)
     task_id = state["session_id"]
     _pub_event(task_id, "node_start", "solving_agent", {"step": idx + 1})
-    llm = get_llm("solving")
+    llm = get_llm("solving", state.get("api_key_config"))
     sandbox = SandboxExecutor()
 
     model_text = state.get("model_output") or "无模型"
@@ -516,7 +516,7 @@ def verification_agent_node(state: AgentState) -> dict:
     idx = _next_step(state)
     task_id = state["session_id"]
     _pub_event(task_id, "node_start", "verification_agent", {"step": idx + 1})
-    llm = get_llm("verification")
+    llm = get_llm("verification", state.get("api_key_config"))
 
     if state["mode"] == "teach":
         system_prompt = VERIFICATION_TEACH_SYSTEM_PROMPT
@@ -595,7 +595,7 @@ def writing_agent_node(state: AgentState) -> dict:
     idx = _next_step(state)
     task_id = state["session_id"]
     _pub_event(task_id, "node_start", "writing_agent", {"step": idx + 1})
-    llm = get_llm("writing")
+    llm = get_llm("writing", state.get("api_key_config"))
 
     if state["mode"] == "teach":
         system_prompt = WRITING_TEACH_SYSTEM_PROMPT.format(

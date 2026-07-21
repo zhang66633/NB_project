@@ -39,6 +39,12 @@ class ApiKeyCreate(BaseModel):
     model_name: str = "deepseek-chat"
 
 
+class ApiKeyQuickCreate(BaseModel):
+    """快速添加 API Key — 只需粘贴 key，其他自动识别。"""
+    key: str
+    name: str = ""
+
+
 class FileUploadRequest(BaseModel):
     """文件上传请求。"""
     filename: Optional[str] = None

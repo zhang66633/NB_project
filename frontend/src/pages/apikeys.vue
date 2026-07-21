@@ -83,10 +83,11 @@
           </div>
         </div>
         <div class="mt-5 flex justify-end gap-2">
-          <Button variant="ghost" @click="showAdd = false">取消</Button>
+          <p v-if="addError" class="text-xs text-red-600 mr-auto self-center">{{ addError }}</p>
+          <Button variant="ghost" @click="showAdd = false; addError = ''">取消</Button>
           <Button :disabled="!form.name || !form.key || !form.model_name || saving" @click="handleAdd">
             <Loader2 v-if="saving" class="h-4 w-4 mr-1 animate-spin" />
-            保存
+            {{ saving ? '验证中...' : '保存' }}
           </Button>
         </div>
       </div>
@@ -116,6 +117,7 @@ const keys = ref<ApiKeyItem[]>([]);
 const loading = ref(false);
 const saving = ref(false);
 const showAdd = ref(false);
+const addError = ref("");
 const form = ref({ name: "", provider: "openai", model_name: "deepseek-chat", key: "" });
 
 async function load() {
@@ -133,13 +135,16 @@ async function load() {
 
 async function handleAdd() {
   saving.value = true;
+  addError.value = "";
   try {
     await addApiKey(form.value);
     showAdd.value = false;
+    addError.value = "";
     form.value = { name: "", provider: "openai", model_name: "deepseek-chat", key: "" };
     await load();
-  } catch (e) {
-    console.error(e);
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail || e?.message || "保存失败";
+    addError.value = detail;
   } finally {
     saving.value = false;
   }

@@ -1,7 +1,19 @@
 # 数学建模多智能体系统 — 实施计划
 
-> 基于 [ARCHITECTURE.md](./ARCHITECTURE.md) 蓝图 + MathModelAgent 前端复刻
-> 版本: v0.1 | 日期: 2026-07-20
+> ⚠️ **蓝图说明**：`ARCHITECTURE.md` 为早期废弃方案（Next.js + MUI），**一律不作参考**，以本文档为准。
+> 版本: v0.2(对齐版) | 日期: 2026-07-21 | 项目目录: `math_agent/`（原 NB_project 已并入，GitHub 远程 `zhang66633/NB_project`）
+>
+> ### 📌 当前进度对齐（2026-07-21 审查快照）
+> | 维度 | 状态 | 说明 |
+> |------|------|------|
+> | 后端核心编排 `workflow.py` | ✅ 完成 | 5 阶段 StateGraph + 状态机 + WS 推送 |
+> | 5 阶段 Agent 节点 `nodes.py` | ✅ 完成 | 已实现真实 LLM 调用（classify/retrieve/model/solve/verify+write），非占位 |
+> | 知识库 RAG（代码） | ✅ 就绪 | 混合检索 + Chroma + Tool 封装 + chain 均已实现 |
+> | 知识库（源数据） | 🔴 缺失 | `knowledge_base/` 为空、Chroma 未初始化 → **检索全程失效** |
+> | WebSocket 进度推送 | ⚠️ 缺完成信号 | `ws.py` 订阅 Redis 转发；**未推 `task_end`/final_response，不在完成时报断** |
+> | 前端页面 / API | ✅ 完成 | Chat / Task / 登录 / 密钥管理 / 认证均接真实 API |
+> | 认证 / 密钥管理 | ✅ 完成 | GitHub OAuth + `pages/apikeys` + `/api/apikeys` |
+> | **端到端联调** | 🔴 未跑通 | 缺知识库数据 + 未做真实任务冒烟，**下一步首要阻塞** |
 
 ---
 
@@ -44,7 +56,7 @@
 ## Project Structure
 
 ```
-NB_project/
+math_agent/
 ├── ARCHITECTURE.md                  # 原始架构蓝图
 ├── PLAN.md                          # 本文件：实施计划
 ├── README.md
@@ -323,7 +335,9 @@ START → classify_problem → retrieve_knowledge → plan_execution
 
 ## RAG 知识库子系统设计
 
-> 内存: KB-RAG-001 | 状态: Phase 0 实施中 | 更新时间: 2026-07-20
+> 内存: KB-RAG-001 | 状态: 代码就绪、源数据缺失（🔴 阻塞） | 更新时间: 2026-07-21
+
+> 🔴 **数据初始化缺口（2026-07-21）**：当前 `knowledge_base/` 目录**为空/不存在**，`data/chroma_db/` 未建立。代码（混合检索 + Chroma + Tool + chain）均已实现，但**不放入 YAML 源数据并跑一次索引构建，检索将全程失效**。待办：① 填充 `knowledge_base/methods|papers|templates` 的 YAML；② 运行 `python -m app.knowledge.indexer`（或增量索引）生成 Chroma；③ 后端冒烟验证 `retrieve_knowledge` 节点返回结果。若索引脚本缺失需补。
 
 ### 总体架构
 

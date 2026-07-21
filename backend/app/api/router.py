@@ -271,28 +271,86 @@ async def get_my_api_key(user: GitHubUser | None = Depends(get_current_user)):
     }
 
 
+async def _verify_api_key(key: str, provider: str, model_name: str) -> tuple[bool, str]:
+    """验证 API Key 是否有效 — 发送一个最小请求测试连通性。"""
+    import httpx
+
+    # 确定 base_url
+    if "deepseek" in model_name.lower():
+        base_url = "https://api.deepseek.com/v1/chat/completions"
+    elif provider == "anthropic":
+        base_url = "https://api.anthropic.com/v1/messages"
+    else:
+        base_url = "https://api.openai.com/v1/chat/completions"
+
+    test_model = model_name if "deepseek" in model_name.lower() else (
+        "claude-3-haiku-20240307" if provider == "anthropic" else "gpt-3.5-turbo"
+    )
+
+    headers = {"Content-Type": "application/json"}
+    if provider == "anthropic":
+        headers["x-api-key"] = key
+        headers["anthropic-version"] = "2023-06-01"
+        body = {
+            "model": test_model,
+            "max_tokens": 1,
+            "messages": [{"role": "user", "content": "hi"}],
+        }
+    else:
+        headers["Authorization"] = f"Bearer {key}"
+        body = {
+            "model": test_model,
+            "max_tokens": 1,
+            "messages": [{"role": "user", "content": "hi"}],
+        }
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(base_url, json=body, headers=headers)
+            if resp.status_code == 200:
+                return True, ""
+            elif resp.status_code == 401 or resp.status_code == 403:
+                return False, "API Key 无效或被拒绝，请检查 Key 是否正确"
+            elif resp.status_code == 429:
+                return False, "API 请求过于频繁，请稍后再试"
+            else:
+                body_text = resp.text[:200]
+                return False, f"API 验证失败 (HTTP {resp.status_code}): {body_text}"
+    except httpx.ConnectError:
+        return False, "无法连接到 API 服务器，请检查网络"
+    except Exception as e:
+        return False, f"验证请求失败: {str(e)[:100]}"
+
+
 @api_router.post("/apikeys/quick")
 async def quick_add_api_key(
     req: ApiKeyQuickCreate,
     user: GitHubUser | None = Depends(get_current_user),
 ):
-    """快速添加 API Key — 只需粘贴 Key，自动识别服务商。"""
+    """快速添加 API Key — 粘贴 Key，自动识别 + 验证有效性。"""
     _load_api_keys()
     uid = _resolve_user_id(user=user)
 
     # 自动识别 provider
     key = req.key.strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="请输入 API Key")
+
     if key.startswith("sk-ant"):
         provider = "anthropic"
-    elif "deepseek" in key.lower():
-        provider = "openai"
     else:
-        provider = "openai"  # 默认 OpenAI 兼容
+        provider = "openai"
 
     # 自动推断模型名
-    model_name = "deepseek-chat"  # 默认
     if provider == "anthropic":
         model_name = "claude-sonnet-4-6"
+    else:
+        model_name = "deepseek-chat"
+
+    # 验证 Key 是否有效
+    valid, err_msg = await _verify_api_key(key, provider, model_name)
+    if not valid:
+        raise HTTPException(status_code=400, detail=f"Key 验证失败: {err_msg}")
 
     key_id = str(uuid.uuid4())[:8]
     masked = key[:4] + "****" + key[-4:] if len(key) > 8 else "****"
@@ -319,7 +377,7 @@ async def quick_add_api_key(
         "masked_key": masked,
         "provider": provider,
         "model_name": model_name,
-        "message": "API Key 已激活，Agent 将使用此 Key 进行对话。",
+        "message": "API Key 验证通过，已激活！Agent 将使用此 Key 进行对话。",
     }
 
 

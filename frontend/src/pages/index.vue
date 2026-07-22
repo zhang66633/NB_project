@@ -93,7 +93,7 @@
               如何在总运输成本最小化时满足各节点需求?
             </p>
             <button
-              class="group inline-flex items-center gap-2 rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background transition-transform hover:scale-[0.98] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              :class="BTN_PRIMARY"
               @click="enterChat('teach')"
             >
               开始学习
@@ -137,7 +137,7 @@ s.t.  Σᵢ xᵢⱼ = Dⱼ,  ∀j ∈ J
               结构化输出完整建模方案,含代码执行、结果验证与论文。适合限时竞赛与正式提交。
             </p>
             <button
-              class="group inline-flex items-center gap-2 rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background transition-transform hover:scale-[0.98] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              :class="BTN_PRIMARY"
               @click="enterChat('execute')"
             >
               开始建模
@@ -200,6 +200,7 @@ import { useRouter, useRoute } from "vue-router";
 import { ArrowRight, ShieldAlert, X, Key, Zap, Loader2, CheckCircle2 } from "lucide-vue-next";
 import { getKBStats, type KBStats } from "@/apis/knowledgeApi";
 import { getApiKeys } from "@/apis/apiKeyApi";
+import { BTN_PRIMARY } from "@/config/styles";
 import request from "@/utils/request";
 
 const router = useRouter();

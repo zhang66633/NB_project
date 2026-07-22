@@ -47,7 +47,7 @@
                 class="w-full rounded-md border border-border bg-background pl-10 pr-4 py-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 @keyup.enter="doSearch" />
             </div>
-            <button class="inline-flex items-center rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background hover:bg-foreground/90 disabled:opacity-50 transition-transform active:scale-[0.98]"
+            <button class="inline-flex items-center rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background hover:bg-foreground/90 disabled:opacity-50 transition-transform hover:scale-[0.98] active:scale-[0.97]"
               :disabled="!searchQuery.trim() || searchLoading" @click="doSearch">
               <Loader2 v-if="searchLoading" class="h-4 w-4 animate-spin" /><span v-else>搜索</span>
             </button>
@@ -171,7 +171,7 @@
               class="w-full resize-y rounded-md border border-border bg-background px-4 py-3 text-sm leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
             <div class="flex items-center gap-2 mt-3 flex-wrap">
               <input v-model="impName" type="text" placeholder="名称(可选)" class="flex-1 min-w-0 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-              <button class="flex items-center whitespace-nowrap rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background hover:bg-foreground/90 disabled:opacity-50 transition-transform active:scale-[0.98]"
+              <button class="flex items-center whitespace-nowrap rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background hover:bg-foreground/90 disabled:opacity-50 transition-transform hover:scale-[0.98] active:scale-[0.97]"
                 :disabled="!impText.trim() || extracting" @click="doExtract">
                 <Loader2 v-if="extracting" class="h-4 w-4 mr-1.5 animate-spin" /><Sparkles v-else class="h-4 w-4 mr-1.5" />{{ extracting ? '提取中' : 'LLM 提取并预览' }}
               </button>
@@ -181,7 +181,7 @@
               <p class="font-mono text-[10px] uppercase tracking-wider text-primary mb-2">提取完成</p>
               <pre class="rounded-md bg-zinc-950 p-4 font-mono text-xs text-zinc-300 overflow-auto max-h-96">{{ extractPreview }}</pre>
               <div class="flex gap-2 mt-3">
-                <button class="flex items-center rounded-md bg-foreground px-5 py-2 text-sm font-medium text-background hover:bg-foreground/90 disabled:opacity-50 transition-transform active:scale-[0.98]"
+                <button class="flex items-center rounded-md bg-foreground px-5 py-2 text-sm font-medium text-background hover:bg-foreground/90 disabled:opacity-50 transition-transform hover:scale-[0.98] active:scale-[0.97]"
                   :disabled="saving" @click="doSaveExtract"><Check v-if="!saving" class="h-4 w-4 mr-1" /><Loader2 v-else class="h-4 w-4 mr-1 animate-spin" />{{ saving ? '保存中' : '保存到知识库' }}</button>
                 <button class="flex items-center rounded-md border border-border px-4 py-2 text-sm hover:bg-accent transition-colors" @click="extractPreview = ''; extractError = ''"><RotateCcw class="h-4 w-4 mr-1" />重新提取</button>
               </div>
@@ -404,7 +404,7 @@
         </div>
         <DialogFooter>
           <button class="rounded-md border border-border px-4 py-2 text-sm hover:bg-accent transition-colors" @click="editOpen = false">取消</button>
-          <button class="rounded-md bg-foreground px-4 py-2 text-sm text-background hover:bg-foreground/90 disabled:opacity-50 transition-transform active:scale-[0.98]" :disabled="editSaving" @click="doEditSave">
+          <button class="rounded-md bg-foreground px-4 py-2 text-sm text-background hover:bg-foreground/90 disabled:opacity-50 transition-transform hover:scale-[0.98] active:scale-[0.97]" :disabled="editSaving" @click="doEditSave">
             <Loader2 v-if="editSaving" class="h-4 w-4 mr-1 animate-spin" />{{ editSaving ? '保存中' : '保存' }}
           </button>
         </DialogFooter>
@@ -417,7 +417,7 @@
         <DialogHeader><DialogTitle class="font-display">确认删除</DialogTitle><DialogDescription>确定删除 "{{ delTarget?.name || delTarget?.title }}"?不可撤销。</DialogDescription></DialogHeader>
         <DialogFooter>
           <button class="rounded-md border border-border px-4 py-2 text-sm hover:bg-accent transition-colors" @click="delOpen = false">取消</button>
-          <button class="rounded-md bg-destructive px-4 py-2 text-sm text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 transition-transform active:scale-[0.98]" :disabled="deleting" @click="doDelete">
+          <button class="rounded-md bg-destructive px-4 py-2 text-sm text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 transition-transform hover:scale-[0.98] active:scale-[0.97]" :disabled="deleting" @click="doDelete">
             <Loader2 v-if="deleting" class="h-4 w-4 mr-1 animate-spin" />{{ deleting ? '删除中' : '确认删除' }}
           </button>
         </DialogFooter>

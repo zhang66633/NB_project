@@ -118,8 +118,7 @@
       <button
         v-for="(item, i) in navItems"
         :key="item.path"
-        class="group relative flex w-full items-center gap-3 py-2 pr-4 pl-5 text-sm transition-transform hover:scale-[0.98] active:scale-[0.97]"
-        :class="isNavActive(item.path) ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'"
+        :class="[NAV_ITEM, isNavActive(item.path) ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-accent/30']"
         @click="navigate(item.path)"
       >
         <span
@@ -144,6 +143,7 @@ import { useRouter, useRoute } from "vue-router";
 import { X, Pencil, Check } from "lucide-vue-next";
 import { APP_NAME } from "@/utils/const";
 import { navItems } from "@/config/navItems";
+import { NAV_ITEM } from "@/config/styles";
 import VersionSwitcher from "@/components/VersionSwitcher.vue";
 import { useChatSessionStore, type SessionMode } from "@/stores/chatSession";
 import { useArchiveStore } from "@/stores/archive";

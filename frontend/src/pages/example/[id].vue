@@ -77,10 +77,7 @@
 
         <!-- 行动:深近黑按钮 -->
         <div class="flex items-center justify-center py-8 border-t border-border">
-          <button
-            class="group inline-flex items-center gap-2 rounded-md bg-foreground px-6 py-2.5 text-sm font-medium text-background transition-transform hover:scale-[0.98] active:scale-[0.97]"
-            @click="tryExample"
-          >
+          <button :class="BTN_PRIMARY" @click="tryExample">
             <Play class="h-3.5 w-3.5" />
             尝试此例题
           </button>
@@ -116,6 +113,8 @@ import { useRouter } from "vue-router";
 import { marked } from "marked";
 import markedKatex from "marked-katex-extension";
 import { ChevronRight, Copy, Play } from "lucide-vue-next";
+import { BTN_PRIMARY } from "@/config/styles";
+
 
 marked.use(markedKatex({ throwOnError: false, nonStandard: true }));
 

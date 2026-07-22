@@ -118,8 +118,8 @@
       <button
         v-for="(item, i) in navItems"
         :key="item.path"
-        class="group relative flex w-full items-center gap-3 py-2 pr-4 pl-5 text-sm transition-transform duration-75 active:scale-95"
-        :class="isNavActive(item.path) ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
+        class="group relative flex w-full items-center gap-3 py-2 pr-4 pl-5 text-sm transition-colors active:bg-accent/60"
+        :class="isNavActive(item.path) ? 'text-foreground bg-accent/60' : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'"
         @click="navigate(item.path)"
       >
         <span

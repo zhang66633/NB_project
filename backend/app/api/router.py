@@ -28,7 +28,7 @@ api_router.include_router(files_router)
 
 # ── Auth（内联，轻量 OAuth）──
 
-from ..auth import GitHubUser, get_current_user
+from ..auth import GitHubUser, get_current_user, ALLOWED_CONTRIBUTORS
 
 _auth_router = APIRouter()
 
@@ -48,7 +48,7 @@ async def github_callback(code: str = Query(...)):
         token_resp = await client.post(
             "https://github.com/login/oauth/access_token",
             data={"client_id": settings.github_client_id,
-                  "client_secret": settings.github_secret, "code": code},
+                  "client_secret": settings.github_client_secret, "code": code},
             headers={"Accept": "application/json"},
         )
         if token_resp.status_code != 200:
@@ -65,7 +65,7 @@ async def github_callback(code: str = Query(...)):
             raise HTTPException(400, detail="无法获取 GitHub 用户信息")
         gh_user = user_resp.json()
     login = gh_user.get("login", "")
-    contributors = [c for c in ["zhang66633", settings.github_contributor] if c]
+    contributors = ALLOWED_CONTRIBUTORS
     if login not in contributors:
         raise HTTPException(status_code=403, detail="仅项目贡献者可登录")
     token = jwt.encode(
@@ -93,7 +93,7 @@ async def logout():
 
 @api_router.get("/health", response_model=HealthResponse)
 async def health_check():
-    return HealthResponse(status="ok", service="math-model-agent", version=get_settings().version)
+    return HealthResponse(status="ok", service="math-model-agent", version="0.1.0")
 
 # 合并 auth 子路由
 for route in _auth_router.routes:

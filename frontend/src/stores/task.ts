@@ -1,4 +1,4 @@
-import type { Message } from "@/utils/response";
+import type { Message } from "@/types/response";
 import { TaskWebSocket } from "@/utils/websocket";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";

@@ -78,7 +78,7 @@ import { ref, watch, onMounted, onUnmounted, nextTick, computed } from "vue";
 import { Brain, ArrowDown, Send, Loader2 } from "lucide-vue-next";
 import { useTaskStore } from "@/stores/task";
 import Bubble from "@/components/Bubble.vue";
-import type { Message } from "@/utils/response";
+import type { Message } from "@/types/response";
 
 const props = withDefaults(defineProps<{
   messages: Message[];

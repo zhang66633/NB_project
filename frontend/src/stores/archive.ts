@@ -1,7 +1,7 @@
 /** 归档 Store — 已归档的方案和教学笔记，localStorage 持久化 */
 import { ref, computed } from "vue";
 import { defineStore } from "pinia";
-import type { Message } from "@/utils/response";
+import type { Message } from "@/types/response";
 
 /** 归档条目类型 */
 export type ArchiveKind = "solution" | "teaching";

@@ -71,8 +71,8 @@ import {
   CheckCircle2,
   XCircle,
 } from "lucide-vue-next";
-import type { Message, SystemMessage as SysMsg, AgentMessage, ToolMessage } from "@/utils/response";
-import { AgentType } from "@/utils/enum";
+import type { Message, SystemMessage as SysMsg, AgentMessage, ToolMessage } from "@/types/response";
+import { AgentType } from "@/types/enum";
 import { useTypewriter } from "@/composables/useTypewriter";
 
 marked.use(markedKatex({ throwOnError: false, nonStandard: true }));

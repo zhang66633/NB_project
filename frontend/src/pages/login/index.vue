@@ -140,7 +140,7 @@ import {
   ArrowLeft,
   Loader2,
 } from "lucide-vue-next";
-import { APP_NAME } from "@/utils/const";
+import { APP_NAME } from "@/types/const";
 import { useAuthStore } from "@/stores/auth";
 
 const router = useRouter();

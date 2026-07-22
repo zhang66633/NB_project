@@ -61,7 +61,7 @@ import AppSidebar from "@/components/AppSidebar.vue";
 import NavUser from "@/components/NavUser.vue";
 import ServiceStatus from "@/components/ServiceStatus.vue";
 import ThemeToggle from "@/components/ThemeToggle.vue";
-import { APP_NAME } from "@/utils/const";
+import { APP_NAME } from "@/types/const";
 
 const mobileNavOpen = ref(false);
 const route = useRoute();

@@ -1,6 +1,6 @@
 import { ref, computed } from "vue";
 import { defineStore } from "pinia";
-import type { Message } from "@/utils/response";
+import type { Message } from "@/types/response";
 
 export type SessionMode = "chat" | "teach" | "solution";
 

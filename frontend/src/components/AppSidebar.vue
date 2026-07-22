@@ -141,7 +141,7 @@
 import { ref, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { X, Pencil, Check } from "lucide-vue-next";
-import { APP_NAME } from "@/utils/const";
+import { APP_NAME } from "@/types/const";
 import { navItems } from "@/config/navItems";
 import { NAV_ITEM } from "@/config/styles";
 import VersionSwitcher from "@/components/VersionSwitcher.vue";

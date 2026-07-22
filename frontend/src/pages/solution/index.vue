@@ -44,7 +44,7 @@ import UserStepper from "@/components/UserStepper.vue";
 import { useChatSessionStore } from "@/stores/chatSession";
 import { useTaskStore } from "@/stores/task";
 import { createTask } from "@/apis/commonApi";
-import type { Message } from "@/utils/response";
+import type { Message } from "@/types/response";
 
 const chatSession = useChatSessionStore();
 const taskStore = useTaskStore();

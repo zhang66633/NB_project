@@ -5,7 +5,7 @@
  */
 import { useChatSessionStore, type SessionMode } from "@/stores/chatSession";
 import { streamChat, type ChatHistoryMessage } from "@/apis/chatApi";
-import type { Message } from "@/utils/response";
+import type { Message } from "@/types/response";
 
 function generateId() {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;

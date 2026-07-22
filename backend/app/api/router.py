@@ -35,11 +35,12 @@ _auth_router = APIRouter()
 @_auth_router.get("/auth/login")
 async def github_login():
     settings = get_settings()
-    return RedirectResponse(
+    authorize_url = (
         f"https://github.com/login/oauth/authorize?"
         f"client_id={settings.github_client_id}"
         f"&redirect_uri={settings.github_redirect_uri}"
     )
+    return {"authorize_url": authorize_url}
 
 @_auth_router.get("/auth/callback")
 async def github_callback(code: str = Query(...)):

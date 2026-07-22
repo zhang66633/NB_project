@@ -40,13 +40,15 @@
             <div class="min-w-0">
               <div class="flex items-center gap-2">
                 <p class="font-medium truncate">{{ k.name }}</p>
-                <span v-if="k.is_default" class="text-[10px] font-mono uppercase bg-primary/10 text-primary px-1.5 py-0.5 rounded">默认</span>
+                <span v-if="k.purpose === 'embedding'" class="text-[10px] font-mono uppercase bg-purple-500/15 text-purple-600 px-1.5 py-0.5 rounded">向量</span>
+                <span v-if="k.is_default && k.purpose !== 'embedding'" class="text-[10px] font-mono uppercase bg-primary/10 text-primary px-1.5 py-0.5 rounded">默认</span>
               </div>
               <p class="text-xs text-muted-foreground font-mono">{{ k.masked_key }} · {{ k.provider }} · {{ k.model_name }}</p>
+              <p v-if="k.base_url" class="text-[11px] text-muted-foreground/60 font-mono truncate">{{ k.base_url }}</p>
             </div>
           </div>
           <div class="flex items-center gap-2 shrink-0">
-            <Button v-if="!k.is_default" variant="outline" size="sm" @click="handleSetDefault(k.id)">
+            <Button v-if="!k.is_default && k.purpose !== 'embedding'" variant="outline" size="sm" @click="handleSetDefault(k.id)">
               <Check class="h-3 w-3 mr-1" />
               设为默认
             </Button>
@@ -67,15 +69,30 @@
             <Input v-model="form.name" placeholder="例如: 我的 DeepSeek" class="mt-1" />
           </div>
           <div>
+            <label class="text-sm font-medium">用途</label>
+            <div class="mt-1 flex gap-2">
+              <button
+                v-for="p in PURPOSES" :key="p.value"
+                class="flex-1 rounded-md border px-3 py-1.5 text-xs transition-colors"
+                :class="form.purpose === p.value ? 'border-primary bg-primary/5 text-foreground' : 'border-border text-muted-foreground hover:text-foreground'"
+                @click="onPurposeChange(p.value)"
+              >{{ p.label }}</button>
+            </div>
+            <p v-if="form.purpose === 'embedding'" class="mt-1 text-[11px] text-muted-foreground">用于知识库向量检索（语义搜索）。仅对话可不配。</p>
+          </div>
+          <div>
             <label class="text-sm font-medium">服务商</label>
-            <select v-model="form.provider" class="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
-              <option value="openai">OpenAI / DeepSeek / 兼容 OpenAI 协议</option>
-              <option value="anthropic">Anthropic (Claude)</option>
+            <select v-model="form.provider" class="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm" @change="onProviderChange">
+              <option v-for="p in PROVIDERS" :key="p.value" :value="p.value">{{ p.label }}</option>
             </select>
           </div>
           <div>
             <label class="text-sm font-medium">模型名称</label>
             <Input v-model="form.model_name" placeholder="deepseek-chat" class="mt-1" />
+          </div>
+          <div>
+            <label class="text-sm font-medium">Base URL <span class="text-muted-foreground font-normal">（留空按服务商预设）</span></label>
+            <Input v-model="form.base_url" :placeholder="presetBaseUrl || 'https://api.deepseek.com'" class="mt-1" />
           </div>
           <div>
             <label class="text-sm font-medium">Key</label>
@@ -96,21 +113,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ArrowLeft, Key, Plus, Trash2, Loader2, Check } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getApiKeys, addApiKey, deleteApiKey, setDefaultApiKey } from "@/apis/apiKeyApi";
-
-interface ApiKeyItem {
-  id: string;
-  name: string;
-  provider: string;
-  model_name: string;
-  masked_key: string;
-  is_default: boolean;
-}
+import { getApiKeys, addApiKey, deleteApiKey, setDefaultApiKey, type ApiKeyItem } from "@/apis/apiKeyApi";
 
 const router = useRouter();
 const keys = ref<ApiKeyItem[]>([]);
@@ -118,7 +126,40 @@ const loading = ref(false);
 const saving = ref(false);
 const showAdd = ref(false);
 const addError = ref("");
-const form = ref({ name: "", provider: "openai", model_name: "deepseek-chat", key: "" });
+
+const PROVIDERS = [
+  { value: "deepseek", label: "DeepSeek", base_url: "https://api.deepseek.com", chat_model: "deepseek-chat" },
+  { value: "qwen", label: "通义千问 (Qwen)", base_url: "https://dashscope.aliyuncs.com/compatible-mode", chat_model: "qwen-plus" },
+  { value: "glm", label: "智谱 (GLM)", base_url: "https://open.bigmodel.cn/api/paas", chat_model: "glm-4-flash" },
+  { value: "siliconflow", label: "SiliconFlow", base_url: "https://api.siliconflow.cn", chat_model: "deepseek-ai/DeepSeek-V3" },
+  { value: "openai", label: "OpenAI", base_url: "https://api.openai.com", chat_model: "gpt-4o-mini" },
+  { value: "anthropic", label: "Anthropic (Claude)", base_url: "https://api.anthropic.com", chat_model: "claude-sonnet-4-6" },
+];
+const PURPOSES = [
+  { value: "chat" as const, label: "对话" },
+  { value: "embedding" as const, label: "向量（知识库）" },
+];
+const DEFAULT_EMBEDDING_MODEL = "BAAI/bge-large-zh-v1.5";
+
+const form = ref({ name: "", provider: "deepseek", model_name: "deepseek-chat", key: "", base_url: "", purpose: "chat" as "chat" | "embedding" });
+
+const presetBaseUrl = computed(() => PROVIDERS.find((p) => p.value === form.value.provider)?.base_url ?? "");
+
+function onProviderChange() {
+  const preset = PROVIDERS.find((p) => p.value === form.value.provider);
+  if (!preset) return;
+  if (form.value.purpose === "chat") form.value.model_name = preset.chat_model;
+}
+
+function onPurposeChange(purpose: "chat" | "embedding") {
+  form.value.purpose = purpose;
+  const preset = PROVIDERS.find((p) => p.value === form.value.provider);
+  form.value.model_name = purpose === "embedding" ? DEFAULT_EMBEDDING_MODEL : (preset?.chat_model ?? "");
+}
+
+function resetForm() {
+  form.value = { name: "", provider: "deepseek", model_name: "deepseek-chat", key: "", base_url: "", purpose: "chat" };
+}
 
 async function load() {
   loading.value = true;
@@ -137,10 +178,10 @@ async function handleAdd() {
   saving.value = true;
   addError.value = "";
   try {
-    await addApiKey(form.value);
+    await addApiKey({ ...form.value, base_url: form.value.base_url || presetBaseUrl.value });
     showAdd.value = false;
     addError.value = "";
-    form.value = { name: "", provider: "openai", model_name: "deepseek-chat", key: "" };
+    resetForm();
     await load();
   } catch (e: any) {
     const detail = e?.response?.data?.detail || e?.message || "保存失败";

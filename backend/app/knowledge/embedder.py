@@ -32,22 +32,67 @@ class KBEmbedder:
         self,
         kb_root: Path,
         persist_dir: Path,
-        embedding_provider: str = "openai",
+        embedding_provider: str | None = None,
     ):
+        from ..config import get_settings
+
+        settings = get_settings()
+        provider = embedding_provider or settings.kb_embedding_provider
+
         self.loader = KnowledgeBaseLoader(kb_root)
         self.kb_root = Path(kb_root)
         self.persist_dir = Path(persist_dir)
         self._hash_path = self.persist_dir / _HASH_DB
-        self.embedding_provider = embedding_provider
+        self.embedding_provider = provider
+        self.embeddings = None
+        self._unavailable_reason = ""
 
-        if embedding_provider == "huggingface":
+        if provider == "huggingface":
             from langchain_huggingface import HuggingFaceEmbeddings
 
             self.embeddings = HuggingFaceEmbeddings(
                 model_name="sentence-transformers/all-MiniLM-L6-v2"
             )
-        else:
+        elif provider == "openai":
+            # 原生 OpenAI（需要 OPENAI_API_KEY）
             self.embeddings = OpenAIEmbeddings()
+        else:
+            # openai_compatible：任何 OpenAI 兼容 embedding 服务（SiliconFlow / 智谱 / DashScope 等）
+            # Key 来源优先级：apikeys 页配置的 purpose=embedding Key > env 配置
+            emb_key, emb_url, emb_model = self._resolve_embedding_config(settings)
+            if emb_key:
+                self.embeddings = OpenAIEmbeddings(
+                    model=emb_model,
+                    api_key=emb_key,
+                    base_url=emb_url,
+                )
+            else:
+                # 延迟失败：构造不报错，检索时自动回退关键词；reindex 时才提示
+                self.embeddings = None
+                self._unavailable_reason = (
+                    "知识库 embedding 未配置：请在 /apikeys 页添加「向量」用途的 Key，"
+                    "或在 backend/.env 设置 KB_EMBEDDING_API_KEY"
+                )
+
+    def _resolve_embedding_config(self, settings) -> tuple[str, str, str]:
+        """解析 embedding 配置，返回 (api_key, base_url, model)。"""
+        try:
+            from ..api.router import get_active_api_key
+
+            emb = get_active_api_key("guest", purpose="embedding")
+            if emb and emb.get("key"):
+                return (
+                    emb["key"],
+                    emb.get("base_url") or settings.kb_embedding_base_url,
+                    emb.get("model_name") or settings.kb_embedding_model,
+                )
+        except Exception:
+            pass
+        return (
+            settings.kb_embedding_api_key,
+            settings.kb_embedding_base_url,
+            settings.kb_embedding_model,
+        )
 
     # ── public: build ───────────────────────────────────────────────
 
@@ -61,6 +106,10 @@ class KBEmbedder:
         Returns:
             Total number of documents in the index after completion.
         """
+        if self.embeddings is None:
+            raise RuntimeError(
+                self._unavailable_reason or "embedding 未配置，无法构建向量索引"
+            )
         if incremental and self.persist_dir.exists():
             return self._incremental_update()
         else:
@@ -208,6 +257,10 @@ class KBEmbedder:
 
     def load_existing(self) -> Chroma:
         """Load an existing ChromaDB index (raises if not yet built)."""
+        if self.embeddings is None:
+            raise RuntimeError(
+                getattr(self, "_unavailable_reason", "embedding 未配置")
+            )
         return Chroma(
             persist_directory=str(self.persist_dir),
             embedding_function=self.embeddings,

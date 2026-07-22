@@ -34,7 +34,11 @@ class LLMFactory:
             llm_config.api_key = active_key.get("key", llm_config.api_key)
             llm_config.model = active_key.get("model_name", llm_config.model)
             llm_config.provider = active_key.get("provider", llm_config.provider)
-            if active_key.get("provider") == "deepseek":
+            # 优先使用 Key 记录里的 base_url（支持任意 OpenAI 兼容服务商）
+            key_base_url = active_key.get("base_url")
+            if key_base_url:
+                llm_config.base_url = key_base_url
+            elif active_key.get("provider") == "deepseek":
                 llm_config.base_url = getattr(settings, "deepseek_base_url", "https://api.deepseek.com")
 
         provider = get_provider(llm_config.model)

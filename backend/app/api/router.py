@@ -182,9 +182,27 @@ async def list_tasks():
 
 # ── API Keys ─────────────────────────────────────────────────────
 
-_api_keys_store: dict[str, dict] = {}  # user_id → {key_id: {name, key, provider, model_name, masked_key}}
+_api_keys_store: dict[str, dict] = {}  # user_id → {key_id: {name, key, provider, model_name, base_url, purpose, masked_key}}
 _user_default_keys: dict[str, str] = {}  # user_id → default_key_id
 _api_keys_file = None
+
+# 服务商预设：base_url 为 OpenAI 兼容端点（不含路径），anthropic 为原生协议
+PROVIDER_PRESETS: dict[str, dict] = {
+    "deepseek":    {"base_url": "https://api.deepseek.com",                       "chat_model": "deepseek-chat"},
+    "qwen":        {"base_url": "https://dashscope.aliyuncs.com/compatible-mode", "chat_model": "qwen-plus"},
+    "glm":         {"base_url": "https://open.bigmodel.cn/api/paas",              "chat_model": "glm-4-flash"},
+    "siliconflow": {"base_url": "https://api.siliconflow.cn",                     "chat_model": "deepseek-ai/DeepSeek-V3"},
+    "openai":      {"base_url": "https://api.openai.com",                         "chat_model": "gpt-4o-mini"},
+    "anthropic":   {"base_url": "https://api.anthropic.com",                      "chat_model": "claude-sonnet-4-6"},
+}
+DEFAULT_EMBEDDING = {"provider": "siliconflow", "model": "BAAI/bge-large-zh-v1.5"}
+
+
+def _preset_base_url(provider: str, explicit: str = "") -> str:
+    """显式 base_url 优先，否则按 provider 预设。"""
+    if explicit:
+        return explicit.rstrip("/")
+    return PROVIDER_PRESETS.get(provider, {}).get("base_url", "")
 
 
 def _get_api_keys_path() -> Path:
@@ -203,14 +221,21 @@ def _load_api_keys():
             data = json.loads(path.read_text(encoding="utf-8"))
             _api_keys_store = data.get("keys", {})
             _user_default_keys = data.get("default_keys", {})
-            # 兼容旧格式: 如果 keys 是 key_id→{...}，转换为 user_id→{key_id→{...}}
+            # 兼容旧格式: {key_id: {...}} → 并入 guest 桶
             if _api_keys_store and not any(isinstance(v, dict) and any(
                 isinstance(vv, dict) and "key" in vv for vv in v.values()
             ) for v in _api_keys_store.values() if isinstance(v, dict)):
-                # 旧格式: {key_id: {...}} → 新格式: {"legacy": {key_id: {...}}}
-                _api_keys_store = {"legacy": _api_keys_store}
-                if _user_default_keys and not isinstance(list(_user_default_keys.values())[0] if _user_default_keys else None, str):
-                    _user_default_keys = {"legacy": list(_user_default_keys.values())[0] if isinstance(list(_user_default_keys.values())[0], str) else next(iter(_api_keys_store.get("legacy", {}).keys()), None)}
+                _api_keys_store = {"guest": _api_keys_store}
+                if not isinstance(_user_default_keys.get("guest"), str):
+                    legacy_default = next(iter(_api_keys_store["guest"].keys()), None)
+                    _user_default_keys = {"guest": legacy_default}
+            # "legacy" 桶并入 "guest"（旧迁移遗留）
+            if "legacy" in _api_keys_store:
+                guest = _api_keys_store.setdefault("guest", {})
+                for kid, v in _api_keys_store.pop("legacy").items():
+                    guest.setdefault(kid, v)
+                if "legacy" in _user_default_keys and "guest" not in _user_default_keys:
+                    _user_default_keys["guest"] = _user_default_keys.pop("legacy")
         except Exception:
             _api_keys_store = {}
             _user_default_keys = {}
@@ -237,8 +262,8 @@ def _resolve_user_id(request: Request | None = None, user: GitHubUser | None = N
     return "guest"
 
 
-def get_active_api_key(user_id: str | None = None) -> dict | None:
-    """获取指定用户的活跃 API Key（优先默认 key，否则返回第一个）。"""
+def get_active_api_key(user_id: str | None = None, purpose: str = "chat") -> dict | None:
+    """获取指定用户指定用途的活跃 API Key（优先默认，其次该用途第一个，chat 可回退任意 key）。"""
     _load_api_keys()
     uid = user_id or "guest"
     user_keys = _api_keys_store.get(uid, {})
@@ -246,71 +271,69 @@ def get_active_api_key(user_id: str | None = None) -> dict | None:
         return None
     default_id = _user_default_keys.get(uid)
     if default_id and default_id in user_keys:
-        return user_keys[default_id]
-    # 返回用户的第一个 key
-    return next(iter(user_keys.values()))
+        entry = user_keys[default_id]
+        if entry.get("purpose", "chat") == purpose:
+            return entry
+    for entry in user_keys.values():
+        if entry.get("purpose", "chat") == purpose:
+            return entry
+    # chat 用途可回退到任意 key（兼容无 purpose 字段的旧数据）
+    if purpose == "chat":
+        return next(iter(user_keys.values()))
+    return None
 
 
 @api_router.get("/apikeys/mine")
 async def get_my_api_key(user: GitHubUser | None = Depends(get_current_user)):
     """获取当前用户的 API Key 状态（首页快速检查用）。"""
-    _load_api_keys()
-    uid = _resolve_user_id(user=user)
-    user_keys = _api_keys_store.get(uid, {})
-    if not user_keys:
+    active = get_active_api_key(_resolve_user_id(user=user))
+    if not active:
         return {"has_key": False, "key": None}
-    # 返回默认 key 或第一个
-    active = get_active_api_key(uid)
     return {
         "has_key": True,
         "key": {
-            "masked_key": active.get("masked_key", "****") if active else "****",
-            "provider": active.get("provider", "") if active else "",
-            "model_name": active.get("model_name", "") if active else "",
-        } if active else None,
+            "masked_key": active.get("masked_key", "****"),
+            "provider": active.get("provider", ""),
+            "model_name": active.get("model_name", ""),
+        },
     }
 
 
-async def _verify_api_key(key: str, provider: str, model_name: str) -> tuple[bool, str]:
+async def _verify_api_key(
+    key: str, provider: str, model_name: str,
+    base_url: str = "", purpose: str = "chat",
+) -> tuple[bool, str]:
     """验证 API Key 是否有效 — 发送一个最小请求测试连通性。"""
     import httpx
 
-    # 确定 base_url
-    if "deepseek" in model_name.lower():
-        base_url = "https://api.deepseek.com/v1/chat/completions"
-    elif provider == "anthropic":
-        base_url = "https://api.anthropic.com/v1/messages"
-    else:
-        base_url = "https://api.openai.com/v1/chat/completions"
-
-    test_model = model_name if "deepseek" in model_name.lower() else (
-        "claude-3-haiku-20240307" if provider == "anthropic" else "gpt-3.5-turbo"
-    )
-
+    resolved_url = _preset_base_url(provider, base_url)
     headers = {"Content-Type": "application/json"}
+
     if provider == "anthropic":
+        url = f"{resolved_url or 'https://api.anthropic.com'}/v1/messages"
         headers["x-api-key"] = key
         headers["anthropic-version"] = "2023-06-01"
-        body = {
-            "model": test_model,
-            "max_tokens": 1,
-            "messages": [{"role": "user", "content": "hi"}],
-        }
-    else:
+        body = {"model": model_name, "max_tokens": 1,
+                "messages": [{"role": "user", "content": "hi"}]}
+    elif purpose == "embedding":
+        url = f"{resolved_url}/v1/embeddings"
         headers["Authorization"] = f"Bearer {key}"
-        body = {
-            "model": test_model,
-            "max_tokens": 1,
-            "messages": [{"role": "user", "content": "hi"}],
-        }
+        body = {"model": model_name, "input": "test"}
+    else:
+        url = f"{resolved_url}/v1/chat/completions"
+        headers["Authorization"] = f"Bearer {key}"
+        body = {"model": model_name, "max_tokens": 1,
+                "messages": [{"role": "user", "content": "hi"}]}
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(base_url, json=body, headers=headers)
+            resp = await client.post(url, json=body, headers=headers)
             if resp.status_code == 200:
                 return True, ""
-            elif resp.status_code == 401 or resp.status_code == 403:
+            elif resp.status_code in (401, 403):
                 return False, "API Key 无效或被拒绝，请检查 Key 是否正确"
+            elif resp.status_code == 404:
+                return False, f"接口不存在，请检查服务商与模型名 ({model_name})"
             elif resp.status_code == 429:
                 return False, "API 请求过于频繁，请稍后再试"
             else:
@@ -327,28 +350,28 @@ async def quick_add_api_key(
     req: ApiKeyQuickCreate,
     user: GitHubUser | None = Depends(get_current_user),
 ):
-    """快速添加 API Key — 粘贴 Key，自动识别 + 验证有效性。"""
+    """快速添加 API Key — 粘贴 Key，按 provider 预设自动补全 + 验证有效性。"""
     _load_api_keys()
     uid = _resolve_user_id(user=user)
 
-    # 自动识别 provider
     key = req.key.strip()
     if not key:
         raise HTTPException(status_code=400, detail="请输入 API Key")
 
-    if key.startswith("sk-ant"):
+    provider = req.provider or "deepseek"
+    if key.startswith("sk-ant") and not req.provider:
         provider = "anthropic"
-    else:
-        provider = "openai"
+    if provider not in PROVIDER_PRESETS:
+        raise HTTPException(status_code=400, detail=f"不支持的服务商: {provider}")
 
-    # 自动推断模型名
-    if provider == "anthropic":
-        model_name = "claude-sonnet-4-6"
-    else:
-        model_name = "deepseek-chat"
+    preset = PROVIDER_PRESETS[provider]
+    model_name = req.model_name or (
+        DEFAULT_EMBEDDING["model"] if req.purpose == "embedding" else preset["chat_model"]
+    )
+    base_url = _preset_base_url(provider, req.base_url)
+    purpose = req.purpose if req.purpose in ("chat", "embedding") else "chat"
 
-    # 验证 Key 是否有效
-    valid, err_msg = await _verify_api_key(key, provider, model_name)
+    valid, err_msg = await _verify_api_key(key, provider, model_name, base_url, purpose)
     if not valid:
         raise HTTPException(status_code=400, detail=f"Key 验证失败: {err_msg}")
 
@@ -359,15 +382,18 @@ async def quick_add_api_key(
         _api_keys_store[uid] = {}
 
     _api_keys_store[uid][key_id] = {
-        "name": req.name or f"我的 Key ({masked})",
+        "name": req.name or f"{provider} Key ({masked})",
         "key": key,
         "provider": provider,
         "model_name": model_name,
+        "base_url": base_url,
+        "purpose": purpose,
         "masked_key": masked,
     }
 
-    # 自动设为该用户的默认
-    _user_default_keys[uid] = key_id
+    # chat 用途自动设为该用户默认（embedding key 不占默认位）
+    if purpose == "chat":
+        _user_default_keys[uid] = key_id
 
     _save_api_keys()
 
@@ -377,7 +403,7 @@ async def quick_add_api_key(
         "masked_key": masked,
         "provider": provider,
         "model_name": model_name,
-        "message": "API Key 验证通过，已激活！Agent 将使用此 Key 进行对话。",
+        "message": "API Key 验证通过，已激活！" if purpose == "chat" else "向量 Key 验证通过，已可用于知识库索引。",
     }
 
 
@@ -391,10 +417,12 @@ async def list_api_keys(user: GitHubUser | None = Depends(get_current_user)):
         ApiKeyResponse(
             id=kid,
             name=v.get("name", ""),
-            provider=v.get("provider", "openai"),
-            model_name=v.get("model_name", "deepseek-chat"),
+            provider=v.get("provider", "deepseek"),
+            model_name=v.get("model_name", ""),
             masked_key=v.get("masked_key", "****"),
             is_default=kid == default_id,
+            base_url=v.get("base_url", ""),
+            purpose=v.get("purpose", "chat"),
         )
         for kid, v in user_keys.items()
     ]
@@ -405,8 +433,10 @@ async def create_api_key(req: ApiKeyCreate, user: GitHubUser | None = Depends(ge
     _load_api_keys()
     uid = _resolve_user_id(user=user)
 
-    # 验证 Key 是否有效
-    valid, err_msg = await _verify_api_key(req.key, req.provider, req.model_name)
+    purpose = req.purpose if req.purpose in ("chat", "embedding") else "chat"
+    base_url = _preset_base_url(req.provider, req.base_url)
+
+    valid, err_msg = await _verify_api_key(req.key, req.provider, req.model_name, base_url, purpose)
     if not valid:
         raise HTTPException(status_code=400, detail=f"Key 验证失败: {err_msg}")
 
@@ -421,10 +451,12 @@ async def create_api_key(req: ApiKeyCreate, user: GitHubUser | None = Depends(ge
         "key": req.key,
         "provider": req.provider,
         "model_name": req.model_name,
+        "base_url": base_url,
+        "purpose": purpose,
         "masked_key": masked,
     }
 
-    if not _user_default_keys.get(uid):
+    if purpose == "chat" and not _user_default_keys.get(uid):
         _user_default_keys[uid] = key_id
 
     _save_api_keys()
@@ -436,6 +468,8 @@ async def create_api_key(req: ApiKeyCreate, user: GitHubUser | None = Depends(ge
         model_name=req.model_name,
         masked_key=masked,
         is_default=key_id == _user_default_keys.get(uid),
+        base_url=base_url,
+        purpose=purpose,
     )
 
 

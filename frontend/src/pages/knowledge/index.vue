@@ -67,11 +67,11 @@
           </div>
 
           <div v-if="searchLoading" class="space-y-3"><div v-for="i in 3" :key="i" class="rounded-md border border-border p-5"><Skeleton class="h-4 w-2/3" /><Skeleton class="h-3 w-full mt-2" /></div></div>
-          <div v-else-if="searchDone && searchResults.length === 0" class="text-center py-16 text-muted-foreground text-sm">未找到匹配结果</div>
-          <div v-else-if="!searchDone" class="text-center py-16 text-muted-foreground text-sm">输入关键词开始检索知识库</div>
+          <div v-else-if="!isBrowsing && searchResults.length === 0" class="text-center py-16 text-muted-foreground text-sm">未找到匹配结果</div>
+          <div v-else-if="isBrowsing && visibleResults.length === 0" class="text-center py-16 text-muted-foreground text-sm">知识库暂无条目,切换到「导入知识」添加</div>
           <div v-else class="space-y-3">
-            <p class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">找到 {{ searchResults.length }} 条</p>
-            <div v-for="r in searchResults" :key="r.id" class="cursor-pointer rounded-md border border-border bg-background p-4 hover:border-primary/40 transition-colors" @click="openDetail(r)">
+            <p class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{{ isBrowsing ? "全部条目" : "找到" }} {{ visibleResults.length }} 条</p>
+            <div v-for="r in visibleResults" :key="r.id" class="cursor-pointer rounded-md border border-border bg-background p-4 hover:border-primary/40 transition-colors" @click="openDetail(r)">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3">
                   <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">[{{ typeLabel(r.type) }}]</span>
@@ -123,27 +123,20 @@
         <!-- ==================== TAB 3: 导入知识 ==================== -->
         <div v-if="activeTab === 'import'">
           <div class="rounded-lg border border-border bg-background p-6">
-            <!-- 导入引导提示 -->
-            <div class="rounded-md border border-blue-200 bg-blue-50/50 p-3 mb-5 text-xs leading-relaxed" :class="impType === 'problem' ? 'border-amber-200 bg-amber-50/50' : impType === 'paper' ? 'border-emerald-200 bg-emerald-50/50' : 'border-blue-200 bg-blue-50/50'">
-              <template v-if="impType === 'problem'">
-                <span class="font-medium text-amber-700">📋 导入题目：</span>
-                <span class="text-amber-600">上传竞赛真题原文。系统会提取年份、赛事、题号，作为后续论文关联的唯一标识。建议<strong>先导入题目</strong>，再导入对应论文。</span>
-              </template>
-              <template v-else-if="impType === 'paper'">
-                <span class="font-medium text-emerald-700">📄 导入论文：</span>
-                <span class="text-emerald-600">
-                  <template v-if="lastProblemRef">上传后将<strong>自动关联到 {{ lastProblemRef }}</strong>，无需额外操作。</template>
-                  <template v-else>先导入题目，再从此处追加论文，系统会自动关联。或直接上传，系统根据<strong>年份+赛事+题号</strong>自动匹配。</template>
-                </span>
-              </template>
-              <template v-else-if="impType === 'method'">
-                <span class="font-medium text-blue-700">📐 导入方法：</span>
-                <span class="text-blue-600">上传数学建模方法的描述文本。系统会提取原理、适用条件、代码示例等信息。</span>
-              </template>
-              <template v-else>
-                <span class="font-medium text-blue-700">📏 导入模板：</span>
-                <span class="text-blue-600">上传分析框架描述。系统会提取引导问题、决策树和检查清单。</span>
-              </template>
+            <!-- 导入引导提示：手稿边注风格 -->
+            <div class="border-l-2 border-foreground/50 pl-4 mb-6">
+              <p class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">
+                § 导入说明 · {{ impTypeLabel }}
+              </p>
+              <p class="text-xs leading-relaxed text-foreground/75">
+                <template v-if="impType === 'problem'">上传竞赛真题原文。系统会提取年份、赛事、题号，作为后续论文关联的唯一标识。建议<strong class="font-medium text-foreground">先导入题目</strong>，再导入对应论文。</template>
+                <template v-else-if="impType === 'paper'">
+                  <template v-if="lastProblemRef">上传后将<strong class="font-medium text-foreground">自动关联到 {{ lastProblemRef }}</strong>，无需额外操作。</template>
+                  <template v-else>先导入题目，再从此处追加论文，系统会自动关联。或直接上传，系统根据<strong class="font-medium text-foreground">年份+赛事+题号</strong>自动匹配。</template>
+                </template>
+                <template v-else-if="impType === 'method'">上传数学建模方法的描述文本。系统会提取原理、适用条件、代码示例等信息。</template>
+                <template v-else>上传分析框架描述。系统会提取引导问题、决策树和检查清单。</template>
+              </p>
             </div>
             <div class="flex items-center gap-x-5 gap-y-2 mb-5 flex-wrap">
               <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">类型</span>
@@ -444,6 +437,27 @@ async function doSearch() {
   catch { searchResults.value = []; }
   finally { searchLoading.value = false; }
 }
+
+// ── 默认浏览全部（不搜索也能看到知识库存量）──────────────────
+const browseAll = ref<SearchResult[]>([]);
+const isBrowsing = computed(() => !searchDone.value || !searchQuery.value.trim());
+const visibleResults = computed<SearchResult[]>(() => {
+  const list = isBrowsing.value ? browseAll.value : searchResults.value;
+  return searchFilter.value ? list.filter((r) => r.type === searchFilter.value) : list;
+});
+async function loadBrowseAll() {
+  try {
+    const [m, p, t, pr] = await Promise.all([listMethods(), listPapers(), listTemplates(), listProblems()]);
+    browseAll.value = [
+      ...(m.data as any[]).map((c) => ({ id: c.card_id, type: "method_card" as const, name: c.name, title: c.name, snippet: (c.principle || "").slice(0, 120), score: null })),
+      ...(p.data as any[]).map((x) => ({ id: x.paper_id, type: "paper" as const, name: x.title, title: x.title, snippet: `${x.year} · ${x.competition} · ${x.problem || ""}`, score: null })),
+      ...(t.data as any[]).map((x) => ({ id: x.template_id, type: "template" as const, name: x.name, title: x.name, snippet: (x.applicable_to || []).join("、"), score: null })),
+      ...(pr.data as any[]).map((x) => ({ id: x.problem_id, type: "problem" as const, name: x.title, title: x.title, snippet: `${x.year} · ${x.competition} · ${x.problem || ""}`, score: null })),
+    ];
+  } catch { browseAll.value = []; }
+}
+// 清空搜索词时回到浏览模式
+watch(searchQuery, (v) => { if (!v.trim()) searchDone.value = false; });
 async function openDetail(r: SearchResult) {
   detailItem.value = r; detailLoading.value = true; detailData.value = null;
   detailRawText.value = ""; detailViewMode.value = "structured";
@@ -547,6 +561,7 @@ const impType = ref("method"); const impText = ref(""); const impName = ref("");
 const dragOver = ref(false); const fileRef = ref<HTMLInputElement | null>(null);
 const extracting = ref(false); const saving = ref(false); const extractPreview = ref(""); const extractError = ref("");
 const impTypes = [{ label: "方法卡片", value: "method" }, { label: "真题论文", value: "paper" }, { label: "框架模板", value: "template" }, { label: "竞赛真题", value: "problem" }];
+const impTypeLabel = computed(() => impTypes.find((o) => o.value === impType.value)?.label ?? "");
 const impPlaceholder = computed(() => ({
   method: "粘贴方法描述...\n例如: 粒子群优化算法(PSO)是一种基于群体智能的启发式优化算法...",
   paper: "粘贴论文内容...\n例如: 2024年国赛A题优秀论文...",
@@ -627,6 +642,6 @@ async function loadStats() { try { const r = await getKBStats(); stats.value = r
 onMounted(async () => {
   if (auth.token) await auth.checkSession();
   authReady.value = true;
-  if (isContributor.value) loadStats();
+  if (isContributor.value) { loadStats(); loadBrowseAll(); }
 });
 </script>

@@ -35,14 +35,20 @@ class ApiKeyCreate(BaseModel):
     """添加 API Key 请求。"""
     name: str
     key: str
-    provider: str = "openai"
+    provider: str = "deepseek"
     model_name: str = "deepseek-chat"
+    base_url: str = ""           # 留空则按 provider 预设推断
+    purpose: str = "chat"        # chat=对话/流水线 | embedding=知识库向量
 
 
 class ApiKeyQuickCreate(BaseModel):
-    """快速添加 API Key — 只需粘贴 key，其他自动识别。"""
+    """快速添加 API Key — 粘贴 key，按 provider 预设自动补全。"""
     key: str
     name: str = ""
+    provider: str = "deepseek"
+    model_name: str = ""
+    base_url: str = ""
+    purpose: str = "chat"
 
 
 class FileUploadRequest(BaseModel):

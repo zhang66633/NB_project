@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openai_api_key: str = ""
 
+    # ---- Embedding（知识库向量索引）----
+    # provider: openai_compatible（默认，任何 OpenAI 兼容 embedding 服务）| huggingface（本地模型）
+    kb_embedding_provider: str = "openai_compatible"
+    kb_embedding_model: str = "BAAI/bge-large-zh-v1.5"
+    kb_embedding_base_url: str = "https://api.siliconflow.cn/v1"
+    kb_embedding_api_key: str = ""
+
     # ---- LLM Models (per agent role) ----
     classifier_model: str = "claude-sonnet-4-6"
     planner_model: str = "claude-sonnet-4-6"

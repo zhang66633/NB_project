@@ -28,16 +28,21 @@ class HybridRetriever(BaseRetriever):
 
     TAG_MATCH_SCORE: ClassVar[float] = 0.85  # fixed relevance score for tag-based matches
 
+    # BaseRetriever 是 pydantic 模型，字段必须先声明才能赋值
+    embedder: KBEmbedder
+    loader: KnowledgeBaseLoader
+    _vector_store: Optional[object] = None
+
     def __init__(
         self,
         kb_root: Path,
         persist_dir: Path,
         embedding_provider: str = "openai",
     ):
-        super().__init__()
-        self.embedder = KBEmbedder(kb_root, persist_dir, embedding_provider)
-        self.loader = KnowledgeBaseLoader(kb_root)
-        self._vector_store = None
+        super().__init__(
+            embedder=KBEmbedder(kb_root, persist_dir, embedding_provider),
+            loader=KnowledgeBaseLoader(kb_root),
+        )
 
     # ── lazy init ──────────────────────────────────────────────────────
 
@@ -123,6 +128,10 @@ class HybridRetriever(BaseRetriever):
             docs = [doc for doc, _ in scored[:k]]
             for doc, score in scored[:k]:
                 doc.metadata["score"] = self._normalize_chroma_score(score)
+
+        # 2.5 向量索引不可用或无结果时的关键词兜底（YAML 全量子串匹配）
+        if not docs:
+            docs = self._keyword_search(query, k)
 
         # 3. Tag-based complementary results (for cold-start / edge cases)
         tag_docs = self._filter_by_tags(problem_type, k)
@@ -242,6 +251,77 @@ class HybridRetriever(BaseRetriever):
             results.append(doc)
 
         return results
+
+    # ── keyword fallback (no embeddings required) ─────────────────────
+
+    def _keyword_search(self, query: str, k: int) -> List[Document]:
+        """关键词子串匹配兜底：向量索引不可用（未构建/无 Key）时保证基础可检索。"""
+        q = query.strip().lower()
+        if not q:
+            return []
+        terms = [t for t in q.split() if t] or [q]
+
+        def score(text: str) -> float:
+            t = text.lower()
+            hits = sum(1 for term in terms if term in t)
+            if hits == 0:
+                return 0.0
+            s = hits / len(terms)
+            if q in t:
+                s += 0.5
+            return s
+
+        candidates: List[tuple[Document, float]] = []
+
+        for card in self.loader.load_all_methods():
+            text = " ".join([
+                card.name, card.principle or "",
+                " ".join(card.category or []),
+                " ".join(card.applicable_when or []),
+                " ".join(card.typical_scenarios or []),
+            ])
+            s = score(text)
+            if s > 0:
+                candidates.append((self._card_to_document(card), s))
+
+        for paper in self.loader.load_all_papers():
+            text = " ".join([
+                paper.title, str(paper.year), paper.competition or "",
+                paper.analysis.problem_summary if paper.analysis else "",
+                " ".join(paper.tags.get("problem_type", []) or []),
+                " ".join(paper.tags.get("core_models", []) or []),
+            ])
+            s = score(text)
+            if s > 0:
+                candidates.append((self._paper_to_document(paper), s))
+
+        for tpl in self.loader.load_all_templates():
+            text = " ".join([
+                tpl.name, " ".join(tpl.applicable_to or []),
+                " ".join(step.name for step in (tpl.steps or [])),
+            ])
+            s = score(text)
+            if s > 0:
+                candidates.append((self._template_to_document(tpl), s))
+
+        for prob in self.loader.load_all_problems():
+            text = " ".join([
+                prob.title, str(prob.year), prob.competition or "",
+                prob.background or "",
+                " ".join(prob.objectives or []),
+                " ".join(prob.tags.get("problem_type", []) or []),
+            ])
+            s = score(text)
+            if s > 0:
+                candidates.append((self._problem_to_document(prob), s))
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        out: List[Document] = []
+        for doc, s in candidates[:k]:
+            # 关键词匹配置信度低于 tag(0.85) 与向量，但保证可用
+            doc.metadata["score"] = min(0.5 + 0.3 * s, 0.9)
+            out.append(doc)
+        return out
 
     # ── document builders (rich page_content for tag results) ──────────
 

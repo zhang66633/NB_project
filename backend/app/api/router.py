@@ -76,7 +76,7 @@ async def github_callback(code: str = Query(...)):
     return JSONResponse(content={
         "token": token, "user": {"login": login,
         "name": gh_user.get("name", login),
-        "avatar": gh_user.get("avatar_url", "")},
+        "avatar_url": gh_user.get("avatar_url", "")},
     })
 
 @_auth_router.get("/auth/user")
@@ -85,7 +85,7 @@ async def get_user_info(user: GitHubUser | None = Depends(get_current_user)):
         return JSONResponse(content={"authenticated": False})
     return JSONResponse(content={
         "authenticated": True,
-        "user": {"login": user.login, "name": user.name, "avatar": user.avatar},
+        "user": {"login": user.login, "name": user.name, "avatar_url": user.avatar},
     })
 
 @_auth_router.post("/auth/logout")

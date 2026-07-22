@@ -34,15 +34,24 @@ const error = ref("");
 
 onMounted(async () => {
   const code = route.query.code as string;
+  const err = route.query.error as string;
+
+  console.log("[OAuth Callback] query:", route.query);
+
+  if (err) {
+    error.value = `GitHub 授权被拒绝: ${err}`;
+    loading.value = false;
+    return;
+  }
+
   if (!code) {
-    error.value = "缺少授权码";
+    error.value = "缺少授权码，请确认 GitHub OAuth App 的回调地址配置正确";
     loading.value = false;
     return;
   }
 
   const ok = await auth.handleCallback(code);
   if (ok) {
-    // Redirect to home or the page they came from
     router.replace("/");
   } else {
     error.value = "GitHub 授权失败，请重试";

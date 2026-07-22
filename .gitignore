@@ -21,9 +21,12 @@ frontend/dist/
 frontend/.vite/
 *.tsbuildinfo
 
-# 运行日志 / 临时输出
+# 运行日志 / 临时输出 / Agent 运行产物
 *.log
 _ws_out*.txt
+backend/images/
+backend/output_paper.*
+backend/paper_output/
 
 # Agent / 编辑器工作数据（不入库）
 .codebuddy/

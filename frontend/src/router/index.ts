@@ -48,11 +48,11 @@ const routes: RouteRecordRaw[] = [
       },
       {
         path: "apikeys",
-        component: () => import("@/pages/apikeys.vue"),
+        component: () => import("@/pages/apikeys/index.vue"),
       },
       {
         path: "settings",
-        component: () => import("@/pages/settings.vue"),
+        component: () => import("@/pages/settings/index.vue"),
       },
     ],
   },

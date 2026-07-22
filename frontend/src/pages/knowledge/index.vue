@@ -322,44 +322,84 @@
       </DialogContent>
     </Dialog>
 
-    <!-- Edit Dialog -->
+    <!-- Edit Dialog — 全字段表单 -->
     <Dialog :open="editOpen" @update:open="editOpen = $event">
-      <DialogContent class="max-w-2xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader><DialogTitle class="font-display">编辑{{ mgrTypeLabel }}: {{ editForm.name || editForm.title }}</DialogTitle></DialogHeader>
-        <div class="space-y-3 text-sm py-2">
-          <p class="font-mono text-[10px] text-muted-foreground/70" v-if="editForm.id">ID: {{ editForm.id }}</p>
+      <DialogContent class="max-w-3xl max-h-[88vh] overflow-y-auto">
+        <DialogHeader><DialogTitle class="font-display">编辑{{ mgrTypeLabel }}</DialogTitle></DialogHeader>
+        <div class="space-y-4 text-sm py-2">
+
+          <!-- ===== 方法卡片 ===== -->
           <template v-if="mgrType === 'method'">
-            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">名称</label><input v-model="editForm.name" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">分类(逗号分隔)</label><input v-model="editForm.catStr" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">核心原理</label><textarea v-model="editForm.principle" rows="4" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">适用条件(每行一个)</label><textarea v-model="editForm.awStr" rows="3" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">典型场景(每行一个)</label><textarea v-model="editForm.tsStr" rows="3" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+            <p class="font-mono text-[10px] text-muted-foreground/70">ID: {{ editForm.card_id }}</p>
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">名称</label><Input v-model="editForm.name" class="mt-1" /></div>
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">核心原理</label><Textarea v-model="editForm.principle" rows="5" class="mt-1" /></div>
+            <ArrayEditor v-model="editForm.category" label="分类" placeholder="优化 / 预测 / 统计..." />
+            <ArrayEditor v-model="editForm.applicable_when" label="适用条件" />
+            <ArrayEditor v-model="editForm.typical_scenarios" label="典型场景" />
+            <ArrayEditor v-model="editForm.not_applicable_when" label="不适用情况" />
+            <ArrayEditor v-model="editForm.common_mistakes" label="常见错误与对策" :fields="[{key:'mistake',label:'错误'},{key:'solution',label:'对策'}]" empty-value="{mistake:'',solution:''}" />
+            <ArrayEditor v-model="editForm.code_snippets" label="代码示例" :fields="[{key:'language',label:'语言'},{key:'description',label:'说明'},{key:'code',label:'代码',type:'textarea'}]" empty-value="{language:'',description:'',code:''}" />
+            <ArrayEditor v-model="editForm.formulas" label="核心公式" :fields="[{key:'name',label:'名称'},{key:'latex',label:'LaTeX'},{key:'description',label:'说明'}]" empty-value="{name:'',latex:'',description:''}" />
+            <ArrayEditor v-model="editForm.related_cards" label="关联方法ID" />
           </template>
+
+          <!-- ===== 论文 ===== -->
           <template v-if="mgrType === 'paper'">
+            <p class="font-mono text-[10px] text-muted-foreground/70">ID: {{ editForm.paper_id }}</p>
             <div class="grid grid-cols-3 gap-2">
-              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">年份</label><input v-model.number="editForm.year" type="number" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">竞赛</label><input v-model="editForm.competition" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">题号</label><input v-model="editForm.problem_id" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">年份</label><Input v-model.number="editForm.year" type="number" class="mt-1" /></div>
+              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">竞赛</label><Input v-model="editForm.competition" class="mt-1" /></div>
+              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">题号</label><Input v-model="editForm.problem_id" class="mt-1" /></div>
             </div>
-            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">标题</label><input v-model="editForm.title" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">建模思路</label><textarea v-model="editForm.approach" rows="3" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">可学之处</label><textarea v-model="editForm.lessons" rows="2" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">评分 1-5</label><input v-model.number="editForm.quality_rating" type="number" min="1" max="5" class="w-20 rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">标题</label><Input v-model="editForm.title" class="mt-1" /></div>
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">评分 1-5</label><Input v-model.number="editForm.quality_rating" type="number" min="1" max="5" class="mt-1" /></div>
+              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">关联题目</label><Input v-model="editForm.problem_ref" class="mt-1" /></div>
+            </div>
+            <ArrayEditor v-model="editForm.tags_problem_type" label="问题类型" />
+            <ArrayEditor v-model="editForm.tags_core_models" label="核心方法" />
+            <h4 class="font-display text-xs uppercase tracking-wider text-muted-foreground pt-1">分析</h4>
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">问题摘要</label><Textarea v-model="editForm.analysis_problem_summary" rows="4" class="mt-1" /></div>
+            <ArrayEditor v-model="editForm.analysis_key_assumptions" label="关键假设" />
+            <ArrayEditor v-model="editForm.analysis_decision_variables" label="决策变量" />
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">目标函数</label><Textarea v-model="editForm.analysis_objective" rows="2" class="mt-1" /></div>
+              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">约束条件</label><Textarea v-model="editForm.analysis_constraints" rows="2" class="mt-1" /></div>
+            </div>
+            <h4 class="font-display text-xs uppercase tracking-wider text-muted-foreground pt-1">模型</h4>
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">建模思路</label><Textarea v-model="editForm.model_approach" rows="4" class="mt-1" /></div>
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">创新点</label><Input v-model="editForm.model_innovation" class="mt-1" /></div>
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">求解方法</label><Input v-model="editForm.model_solution_method" class="mt-1" /></div>
+            <h4 class="font-display text-xs uppercase tracking-wider text-muted-foreground pt-1">评价</h4>
+            <ArrayEditor v-model="editForm.evaluation_strengths" label="优点" />
+            <ArrayEditor v-model="editForm.evaluation_weaknesses" label="缺点" />
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">可学之处</label><Textarea v-model="editForm.evaluation_lessons" rows="3" class="mt-1" /></div>
+            <ArrayEditor v-model="editForm.methodology_chain" label="方法链路" />
           </template>
+
+          <!-- ===== 模板 ===== -->
           <template v-if="mgrType === 'template'">
-            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">名称</label><input v-model="editForm.name" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">适用类型(逗号分隔)</label><input v-model="editForm.atStr" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+            <p class="font-mono text-[10px] text-muted-foreground/70">ID: {{ editForm.template_id }}</p>
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">名称</label><Input v-model="editForm.name" class="mt-1" /></div>
+            <ArrayEditor v-model="editForm.applicable_to" label="适用类型" />
+            <ArrayEditor v-model="editForm.steps" label="引导步骤" :fields="[{key:'name',label:'步骤名'},{key:'guiding_questions',label:'引导问题',type:'textarea'},{key:'decision_tree',label:'决策分支',type:'textarea'},{key:'checklist',label:'检查清单',type:'textarea'}]" empty-value="{name:'',guiding_questions:'',decision_tree:'',checklist:''}" />
           </template>
+
+          <!-- ===== 赛题 ===== -->
           <template v-if="mgrType === 'problem'">
+            <p class="font-mono text-[10px] text-muted-foreground/70">ID: {{ editForm.problem_id }}</p>
             <div class="grid grid-cols-3 gap-2">
-              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">年份</label><input v-model.number="editForm.year" type="number" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">竞赛</label><input v-model="editForm.competition" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">题号</label><input v-model="editForm.problem_id" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">年份</label><Input v-model.number="editForm.year" type="number" class="mt-1" /></div>
+              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">竞赛</label><Input v-model="editForm.competition" class="mt-1" /></div>
+              <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">题号</label><Input v-model="editForm.problem_id" class="mt-1" /></div>
             </div>
-            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">标题</label><input v-model="editForm.title" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">问题类型(逗号分隔)</label><input v-model="editForm.tagsStr" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">求解目标(每行一个)</label><textarea v-model="editForm.objStr" rows="3" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">问题背景</label><textarea v-model="editForm.background" rows="3" class="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">标题</label><Input v-model="editForm.title" class="mt-1" /></div>
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">问题背景</label><Textarea v-model="editForm.background" rows="4" class="mt-1" /></div>
+            <ArrayEditor v-model="editForm.objectives" label="求解目标" />
+            <ArrayEditor v-model="editForm.tags_problem_type" label="题型标签" />
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">数据描述</label><Input v-model="editForm.data_description" class="mt-1" /></div>
+            <div><label class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">原文全文</label><Textarea v-model="editForm.full_text" rows="6" class="mt-1" /></div>
+            <ArrayEditor v-model="editForm.deliverables" label="提交物" />
           </template>
         </div>
         <DialogFooter>
@@ -395,6 +435,9 @@ import {
 } from "lucide-vue-next";
 import { useAuthStore } from "@/stores/auth";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import ArrayEditor from "@/components/ArrayEditor.vue";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import {
   searchKB, getKBStats, reindexKB, getMethod, getPaper, getTemplate, getProblem,
@@ -514,23 +557,72 @@ watch(mgrType, () => loadMgrList());
 // Edit
 const editOpen = ref(false); const editSaving = ref(false); const editForm = ref<Record<string, any>>({});
 function openEdit(e: any) {
-  editForm.value = { ...e };
-  if (mgrType.value === "method") { editForm.value.catStr = (e.category||[]).join(", "); editForm.value.awStr = (e.applicable_when||[]).join("\n"); editForm.value.tsStr = (e.typical_scenarios||[]).join("\n"); }
-  if (mgrType.value === "paper") { editForm.value.approach = e.model?.approach||""; editForm.value.lessons = e.evaluation?.lessons||""; }
-  if (mgrType.value === "template") { editForm.value.atStr = (e.applicable_to||[]).join(", "); }
-  if (mgrType.value === "problem") { editForm.value.objStr = (e.objectives||[]).join("\n"); editForm.value.tagsStr = (e.tags?.problem_type||[]).join(", "); }
+  const t: any = { ...e };
+  if (mgrType.value === "method") {
+    t.category = Array.isArray(t.category) ? [...t.category] : [];
+    t.applicable_when = Array.isArray(t.applicable_when) ? [...t.applicable_when] : [];
+    t.typical_scenarios = Array.isArray(t.typical_scenarios) ? [...t.typical_scenarios] : [];
+    t.not_applicable_when = Array.isArray(t.not_applicable_when) ? [...t.not_applicable_when] : [];
+    t.common_mistakes = Array.isArray(t.common_mistakes) ? t.common_mistakes.map((m:any) => ({...m})) : [];
+    t.code_snippets = Array.isArray(t.code_snippets) ? t.code_snippets.map((c:any) => ({...c})) : [];
+    t.formulas = Array.isArray(t.formulas) ? t.formulas.map((f:any) => ({...f})) : [];
+    t.related_cards = Array.isArray(t.related_cards) ? [...t.related_cards] : [];
+  }
+  if (mgrType.value === "paper") {
+    const ana: any = t.analysis || {};
+    t.analysis_problem_summary = ana.problem_summary || "";
+    t.analysis_key_assumptions = Array.isArray(ana.key_assumptions) ? [...ana.key_assumptions] : [];
+    t.analysis_decision_variables = Array.isArray(ana.decision_variables) ? [...ana.decision_variables] : [];
+    t.analysis_objective = ana.objective || "";
+    t.analysis_constraints = ana.constraints || "";
+    const mdl: any = t.model || {};
+    t.model_approach = mdl.approach || "";
+    t.model_innovation = mdl.innovation || "";
+    t.model_solution_method = mdl.solution_method || "";
+    const eva: any = t.evaluation || {};
+    t.evaluation_strengths = Array.isArray(eva.strengths) ? [...eva.strengths] : [];
+    t.evaluation_weaknesses = Array.isArray(eva.weaknesses) ? [...eva.weaknesses] : [];
+    t.evaluation_lessons = eva.lessons || "";
+    const tags: any = t.tags || {};
+    t.tags_problem_type = Array.isArray(tags.problem_type) ? [...tags.problem_type] : [];
+    t.tags_core_models = Array.isArray(tags.core_models) ? [...tags.core_models] : [];
+    t.methodology_chain = Array.isArray(t.methodology_chain) ? [...t.methodology_chain] : [];
+  }
+  if (mgrType.value === "template") {
+    t.steps = Array.isArray(t.steps) ? t.steps.map((s:any) => ({...s})) : [];
+    t.applicable_to = Array.isArray(t.applicable_to) ? [...t.applicable_to] : [];
+  }
+  if (mgrType.value === "problem") {
+    const tags: any = t.tags || {};
+    t.tags_problem_type = Array.isArray(tags.problem_type) ? [...tags.problem_type] : [];
+    t.objectives = Array.isArray(t.objectives) ? [...t.objectives] : [];
+    t.deliverables = Array.isArray(t.deliverables) ? [...t.deliverables] : [];
+  }
+  editForm.value = t;
   editOpen.value = true;
 }
 async function doEditSave() {
   editSaving.value = true;
   try {
-    const id = editForm.value.id; let data: any = { ...editForm.value };
-    if (mgrType.value === "method") { data.category = (editForm.value.catStr||"").split(",").map((s:string)=>s.trim()).filter(Boolean); data.applicable_when = (editForm.value.awStr||"").split("\n").filter(Boolean); data.typical_scenarios = (editForm.value.tsStr||"").split("\n").filter(Boolean); delete data.catStr; delete data.awStr; delete data.tsStr; await updateMethod(id, data); }
-    else if (mgrType.value === "paper") { data.model = { approach: editForm.value.approach||"", innovation: editForm.value.model?.innovation||"", solution_method: editForm.value.model?.solution_method||"" }; data.evaluation = { strengths: editForm.value.evaluation?.strengths||[], weaknesses: editForm.value.evaluation?.weaknesses||[], lessons: editForm.value.lessons||"" }; delete data.approach; delete data.lessons; await updatePaper(id, data); }
-    else if (mgrType.value === "problem") { data.objectives = (editForm.value.objStr||"").split("\n").filter(Boolean); data.tags = { ...editForm.value.tags, problem_type: (editForm.value.tagsStr||"").split(",").map((s:string)=>s.trim()).filter(Boolean) }; delete data.objStr; delete data.tagsStr; await updateProblem(id, data); }
-    else { data.applicable_to = (editForm.value.atStr||"").split(",").map((s:string)=>s.trim()).filter(Boolean); delete data.atStr; await updateTemplate(id, data); }
+    const id = editForm.value.id || editForm.value.card_id || editForm.value.paper_id || editForm.value.problem_id || editForm.value.template_id;
+    let data: any = { ...editForm.value };
+    if (mgrType.value === "method") { delete data.id; await updateMethod(id, data); }
+    else if (mgrType.value === "paper") {
+      data.analysis = { problem_summary: data.analysis_problem_summary, key_assumptions: data.analysis_key_assumptions, decision_variables: data.analysis_decision_variables, objective: data.analysis_objective, constraints: data.analysis_constraints };
+      data.model = { approach: data.model_approach, innovation: data.model_innovation, solution_method: data.model_solution_method };
+      data.evaluation = { strengths: data.evaluation_strengths, weaknesses: data.evaluation_weaknesses, lessons: data.evaluation_lessons };
+      data.tags = { problem_type: data.tags_problem_type, core_models: data.tags_core_models };
+      ["analysis_problem_summary","analysis_key_assumptions","analysis_decision_variables","analysis_objective","analysis_constraints",
+       "model_approach","model_innovation","model_solution_method","evaluation_strengths","evaluation_weaknesses","evaluation_lessons",
+       "tags_problem_type","tags_core_models"].forEach(k => delete (data as any)[k]);
+      await updatePaper(id, data);
+    } else if (mgrType.value === "template") { delete data.id; await updateTemplate(id, data); }
+    else if (mgrType.value === "problem") {
+      data.tags = { ...data.tags, problem_type: data.tags_problem_type };
+      delete data.tags_problem_type; delete data.id; await updateProblem(id, data);
+    }
     editOpen.value = false; await loadMgrList(); await loadStats();
-  } catch (e: any) { alert(`保存失败: ${e?.response?.data?.detail || e}`); }
+  } catch (e: any) { alert("保存失败: " + (e?.response?.data?.detail || e)); }
   finally { editSaving.value = false; }
 }
 

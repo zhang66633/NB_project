@@ -134,6 +134,7 @@ const PROVIDERS = [
   { value: "siliconflow", label: "SiliconFlow", base_url: "https://api.siliconflow.cn", chat_model: "deepseek-ai/DeepSeek-V3" },
   { value: "openai", label: "OpenAI", base_url: "https://api.openai.com", chat_model: "gpt-4o-mini" },
   { value: "anthropic", label: "Anthropic (Claude)", base_url: "https://api.anthropic.com", chat_model: "claude-sonnet-4-6" },
+  { value: "custom", label: "自定义...", base_url: "", chat_model: "" },
 ];
 const PURPOSES = [
   { value: "chat" as const, label: "对话" },
@@ -148,7 +149,13 @@ const presetBaseUrl = computed(() => PROVIDERS.find((p) => p.value === form.valu
 function onProviderChange() {
   const preset = PROVIDERS.find((p) => p.value === form.value.provider);
   if (!preset) return;
-  if (form.value.purpose === "chat") form.value.model_name = preset.chat_model;
+  if (preset.value !== "custom") {
+    form.value.base_url = preset.base_url;
+    if (form.value.purpose === "chat") form.value.model_name = preset.chat_model;
+  } else {
+    form.value.base_url = "";
+    form.value.model_name = "";
+  }
 }
 
 function onPurposeChange(purpose: "chat" | "embedding") {

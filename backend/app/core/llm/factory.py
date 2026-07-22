@@ -13,7 +13,7 @@ from .providers import get_provider
 def get_active_api_key() -> dict | None:
     """获取当前活动的 API Key（优先默认 key，否则返回第一个）。"""
     try:
-        from app.api.router import get_active_api_key as _get_key
+        from app.api.apikeys import get_active_api_key as _get_key
         return _get_key()
     except Exception:
         return None

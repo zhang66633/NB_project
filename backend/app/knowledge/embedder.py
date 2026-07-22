@@ -77,7 +77,7 @@ class KBEmbedder:
     def _resolve_embedding_config(self, settings) -> tuple[str, str, str]:
         """解析 embedding 配置，返回 (api_key, base_url, model)。"""
         try:
-            from ..api.router import get_active_api_key
+            from ..api.apikeys import get_active_api_key
 
             emb = get_active_api_key("guest", purpose="embedding")
             if emb and emb.get("key"):

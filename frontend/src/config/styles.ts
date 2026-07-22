@@ -4,9 +4,11 @@
  */
 
 // ── 缩放动画 ──
-/* 两段式：悬停 → 2%，按下 → 3% */
+/* 两段式：悬停 → 2%，按下 → 3%（完整版，含 transition） */
 export const SCALE_PRESS =
   "transition-transform hover:scale-[0.98] active:scale-[0.97]";
+/* 仅缩放部分，用于已有 transition 的组件（如 shadcn Button） */
+export const SCALE_PRESS_ONLY = "hover:scale-[0.98] active:scale-[0.97]";
 
 // ── 按钮 ──
 /* 主按钮（实心 + focus ring） — 首页 CTA */

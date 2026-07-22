@@ -2,7 +2,7 @@
   <div class="flex h-full flex-col overflow-hidden">
     <header class="flex items-center justify-between border-b px-6 py-4 shrink-0">
       <div class="flex items-center gap-3">
-        <Button variant="ghost" size="icon" @click="router.back()">
+        <Button variant="ghost" size="icon" :class="SCALE_PRESS_ONLY" @click="router.back()">
           <ArrowLeft class="h-4 w-4" />
         </Button>
         <div>
@@ -10,7 +10,7 @@
           <p class="text-xs text-muted-foreground">管理用于调用大模型的 API 凭证</p>
         </div>
       </div>
-      <Button @click="showAdd = true">
+      <Button :class="SCALE_PRESS_ONLY" @click="showAdd = true">
         <Plus class="h-4 w-4 mr-1" />
         添加 Key
       </Button>
@@ -48,11 +48,11 @@
             </div>
           </div>
           <div class="flex items-center gap-2 shrink-0">
-            <Button v-if="!k.is_default && k.purpose !== 'embedding'" variant="outline" size="sm" @click="handleSetDefault(k.id)">
+            <Button v-if="!k.is_default && k.purpose !== 'embedding'" variant="outline" size="sm" :class="SCALE_PRESS_ONLY" @click="handleSetDefault(k.id)">
               <Check class="h-3 w-3 mr-1" />
               设为默认
             </Button>
-            <Button variant="ghost" size="icon" class="text-destructive hover:text-destructive" @click="handleDelete(k.id)">
+            <Button variant="ghost" size="icon" :class="['text-destructive hover:text-destructive', SCALE_PRESS_ONLY].join(' ')" @click="handleDelete(k.id)">
               <Trash2 class="h-4 w-4" />
             </Button>
           </div>
@@ -101,8 +101,8 @@
         </div>
         <div class="mt-5 flex justify-end gap-2">
           <p v-if="addError" class="text-xs text-red-600 mr-auto self-center">{{ addError }}</p>
-          <Button variant="ghost" @click="showAdd = false; addError = ''">取消</Button>
-          <Button :disabled="!form.name || !form.key || !form.model_name || saving" @click="handleAdd">
+          <Button variant="ghost" :class="SCALE_PRESS_ONLY" @click="showAdd = false; addError = ''">取消</Button>
+          <Button :disabled="!form.name || !form.key || !form.model_name || saving" :class="SCALE_PRESS_ONLY" @click="handleAdd">
             <Loader2 v-if="saving" class="h-4 w-4 mr-1 animate-spin" />
             {{ saving ? '验证中...' : '保存' }}
           </Button>
@@ -119,6 +119,7 @@ import { ArrowLeft, Key, Plus, Trash2, Loader2, Check } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getApiKeys, addApiKey, deleteApiKey, setDefaultApiKey, type ApiKeyItem } from "@/apis/apiKeyApi";
+import { SCALE_PRESS } from "@/config/styles";
 
 const router = useRouter();
 const keys = ref<ApiKeyItem[]>([]);

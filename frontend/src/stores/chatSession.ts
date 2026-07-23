@@ -32,7 +32,15 @@ export const useChatSessionStore = defineStore(
     const activeTeachId = ref<string | null>(null);
     const activeSolutionId = ref<string | null>(null);
 
-    const isRunning = ref(false);
+    /** 当前正在运行的模式（仅允许一个，避免三页互串）。null = 空闲。 */
+    const runningMode = ref<SessionMode | null>(null);
+
+    function getIsRunning(mode: SessionMode) {
+      return computed(() => runningMode.value === mode);
+    }
+    function setRunning(mode: SessionMode | null) {
+      runningMode.value = mode;
+    }
 
     function getSessions(mode: SessionMode) {
       switch (mode) {
@@ -193,20 +201,21 @@ export const useChatSessionStore = defineStore(
     return {
       chatSessions, teachSessions, solutionSessions,
       activeChatId, activeTeachId, activeSolutionId,
-      isRunning,
+      runningMode,
       sortedChatSessions, sortedTeachSessions, sortedSolutionSessions,
       activeChatSession, activeTeachSession, activeSolutionSession,
       activeChatMessages, activeTeachMessages, activeSolutionMessages,
       createSession, switchSession, deleteSession, renameSession,
       addMessage, updateMessage, clearActive,
       getSessions, getActiveId, getSortedSessions, getActiveSession, getActiveMessages,
+      getIsRunning, setRunning,
     };
   },
   {
     persist: {
       key: "mma-chat-sessions",
       storage: localStorage,
-      pick: ["chatSessions", "teachSessions", "solutionSessions", "activeChatId", "activeTeachId", "activeSolutionId"],
+      pick: ["chatSessions", "teachSessions", "solutionSessions", "activeChatId", "activeTeachId", "activeSolutionId", "runningMode"],
     },
   },
 );

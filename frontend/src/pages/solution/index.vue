@@ -10,26 +10,41 @@
       </button>
       <ChatArea
         :messages="displayMessages"
-        :is-running="chatSession.isRunning"
+        :is-running="chatSession.getIsRunning('solution').value"
+        :cancellable="!!currentTaskId"
+        :cancelling="cancelling"
         empty-text="开始建模"
         empty-subtext="描述你的问题，我将输出完整建模方案和论文"
         input-placeholder="描述你想解决的建模问题..."
         @send="handleUserSend"
-      />
+        @cancel="handleCancel"
+      >
+        <template #progress>
+          <ProgressTimeline
+            v-if="rightPanelOpen === false || true"
+            class="mx-4 sm:mx-8 mt-2 mb-4"
+            :steps="agentSteps"
+            :running="taskStore.isRunning"
+            :completed="taskStore.completed"
+            :ws-status="taskStore.wsStatus"
+            :open="true"
+            @toggle="rightPanelOpen = !rightPanelOpen"
+          />
+        </template>
+      </ChatArea>
     </div>
     <Transition name="slide-right">
-      <div v-if="rightPanelOpen" class="w-80 shrink-0 border-l bg-background flex flex-col overflow-y-auto">
-        <div>
-          <div class="border-b border-border px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-accent/50" @click="progressOpen = !progressOpen">
-            <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">§ 执行进度</span>
-            <ChevronDown class="h-3 w-3 text-muted-foreground transition-transform" :class="{ 'rotate-180': progressOpen }" />
-          </div>
-          <div v-if="progressOpen" class="p-4">
-            <UserStepper :steps="agentSteps" />
-            <p v-if="taskStore.wsStatus !== 'connected' && chatSession.isRunning" class="mt-3 font-mono text-[10px] text-muted-foreground">
-              WS 状态: {{ taskStore.wsStatus }}
-            </p>
-          </div>
+      <div v-if="rightPanelOpen" class="w-80 shrink-0 border-l bg-background p-4 overflow-y-auto">
+        <ProgressTimeline
+          :steps="agentSteps"
+          :running="taskStore.isRunning"
+          :completed="taskStore.completed"
+          :ws-status="taskStore.wsStatus"
+          :open="true"
+          @toggle="rightPanelOpen = !rightPanelOpen"
+        />
+        <div v-if="currentTaskId" class="mt-3 font-mono text-[10px] text-muted-foreground break-all">
+          Task ID: {{ currentTaskId }}
         </div>
       </div>
     </Transition>
@@ -37,43 +52,45 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
-import { PanelRight, ChevronDown } from "lucide-vue-next";
+import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
+import { PanelRight } from "lucide-vue-next";
 import ChatArea from "@/components/ChatArea.vue";
-import UserStepper from "@/components/UserStepper.vue";
+import ProgressTimeline, { type ProgressStep } from "@/components/ProgressTimeline.vue";
 import { useChatSessionStore } from "@/stores/chatSession";
 import { useTaskStore } from "@/stores/task";
-import { createTask } from "@/apis/commonApi";
+import { createTask, cancelTask } from "@/apis/commonApi";
 import type { Message } from "@/types/response";
 
 const chatSession = useChatSessionStore();
 const taskStore = useTaskStore();
 
 const rightPanelOpen = ref(true);
-const progressOpen = ref(true);
 
-// 当前 solution 会话关联的后端 task_id（本地映射，不持久化后端任务）
+// 当前 solution 会话关联的后端 task_id（页面内局部状态）
 const currentTaskId = ref<string | null>(null);
+const cancelling = ref(false);
 
-// 步骤定义（与后端 node_meta 对齐）
-const stepDefs = [
-  { key: "问题分析", label: "问题分析", description: "识别问题类型,理解题意" },
-  { key: "模型构建", label: "模型构建", description: "选择并建立数学模型" },
-  { key: "求解计算", label: "求解计算", description: "生成并执行求解代码" },
-  { key: "验证分析", label: "验证分析", description: "检验模型鲁棒性" },
-  { key: "论文写作", label: "论文写作", description: "生成结构化论文" },
+const stepDefs: ProgressStep[] = [
+  { id: "1", label: "问题分析", description: "识别问题类型，理解题意", status: "wait" },
+  { id: "2", label: "模型构建", description: "选择并建立数学模型", status: "wait" },
+  { id: "3", label: "求解计算", description: "生成并执行求解代码", status: "wait" },
+  { id: "4", label: "验证分析", description: "检验模型鲁棒性", status: "wait" },
+  { id: "5", label: "论文写作", description: "生成结构化论文", status: "wait" },
 ];
 
-const agentSteps = computed(() => {
+const agentSteps = computed<ProgressStep[]>(() => {
   const current = taskStore.currentStep;
-  // 后端 stage 可能是「问题分析/知识检索/计划制定/模型构建/求解计算/验证分析/论文写作/整合输出」
-  // 映射到 5 个主步骤：找到第一个 >= current 的主步骤作为 active
-  const order = stepDefs.map((s) => s.key);
+  if (taskStore.completed) {
+    return stepDefs.map((s) => ({ ...s, status: "done" }));
+  }
+  if (!current) {
+    return stepDefs;
+  }
+  const order = stepDefs.map((s) => s.label);
   let activeIdx = order.indexOf(current);
   if (current === "已完成") {
-    return stepDefs.map((s, i) => ({ id: String(i + 1), label: s.label, description: s.description, status: "done" as const }));
+    return stepDefs.map((s) => ({ ...s, status: "done" }));
   }
-  // 若 current 不在主步骤里（如「知识检索」「计划制定」），按最接近的归类
   if (activeIdx === -1) {
     if (current.includes("分析") || current.includes("检索") || current.includes("计划")) activeIdx = 0;
     else if (current.includes("模型")) activeIdx = 1;
@@ -82,21 +99,18 @@ const agentSteps = computed(() => {
     else if (current.includes("写作") || current.includes("整合") || current.includes("输出")) activeIdx = 4;
   }
   return stepDefs.map((s, i) => ({
-    id: String(i + 1),
-    label: s.label,
-    description: s.description,
+    ...s,
     status:
       activeIdx === -1
-        ? ("wait" as const)
+        ? "wait"
         : i < activeIdx
-        ? ("done" as const)
-        : i === activeIdx
-        ? ("active" as const)
-        : ("wait" as const),
+          ? "done"
+          : i === activeIdx
+            ? "active"
+            : "wait",
   }));
 });
 
-// 聊天面板 = 用户在 solution 会话发的消息 + 该 task 的进度/最终答案
 const displayMessages = computed<Message[]>(() => {
   const userMsgs = chatSession.activeSolutionMessages;
   const taskMsgs = currentTaskId.value ? taskStore.messages : [];
@@ -121,14 +135,26 @@ async function handleUserSend(text: string) {
   };
   chatSession.addMessage("solution", sessionId, userMsg);
 
-  chatSession.isRunning = true;
+  // 如果已有任务在跑，先拒绝发送
+  if (chatSession.runningMode !== null) {
+    chatSession.addMessage("solution", sessionId, {
+      id: generateId(),
+      msg_type: "system",
+      type: "error",
+      content: "⚠️ 当前已有任务在执行，请先等待或停止。",
+      created_at: new Date().toISOString(),
+    } as Message);
+    return;
+  }
+
+  chatSession.setRunning("solution");
 
   try {
     const res = await createTask({ problem: text, mode: "execute" });
     const taskId = res.data?.task_id ?? res.data?.data?.task_id;
     if (!taskId) throw new Error("未返回 task_id");
     currentTaskId.value = taskId;
-    // 连接 WS 实时接收进度与最终答案；isRunning 由 task_end 事件驱动
+    // 连接 WS 实时接收进度与最终答案；task_end 事件会清空 runningMode
     taskStore.connectWebSocket(taskId);
   } catch (e: any) {
     chatSession.addMessage("solution", sessionId, {
@@ -138,28 +164,49 @@ async function handleUserSend(text: string) {
       content: `⚠️ 创建任务失败：${e?.message ?? "后端不可达，请确认已启动 (uvicorn app.main:app --port 8000)"}`,
       created_at: new Date().toISOString(),
     } as Message);
-    chatSession.isRunning = false;
+    chatSession.setRunning(null);
+    currentTaskId.value = null;
   }
 }
 
-// task_end 后 taskStore.isRunning 置 false，同步到本地运行态
+async function handleCancel() {
+  if (!currentTaskId.value || cancelling.value) return;
+  cancelling.value = true;
+  try {
+    await cancelTask(currentTaskId.value);
+    // 后端会主动推 task_end/canceled 事件，前端通过 WS 收尾
+  } catch (e: any) {
+    console.error("取消任务失败：", e);
+  } finally {
+    // 兜底：若 WS 没收到 cancel 事件，2s 后强制清状态
+    setTimeout(() => {
+      cancelling.value = false;
+      if (chatSession.runningMode === "solution") {
+        chatSession.setRunning(null);
+      }
+    }, 2000);
+  }
+}
+
+// task_end 后 taskStore.isRunning=false，同步 solution 的 runningMode
 watch(
   () => taskStore.isRunning,
   (running) => {
-    chatSession.isRunning = running;
+    if (!running && chatSession.runningMode === "solution") {
+      chatSession.setRunning(null);
+    }
   },
 );
 
 onMounted(() => {
-  // 刷新/重新进入时恢复最近的 solution 会话，避免空白
   if (!chatSession.activeSolutionId && chatSession.sortedSolutionSessions.length > 0) {
     chatSession.switchSession("solution", chatSession.sortedSolutionSessions[0].id);
   }
 });
 
-onUnmounted(() => {
-  taskStore.closeWebSocket();
-});
+// 注意：故意不在 onUnmounted 关闭 WS，避免切页导致任务进度丢失。
+// WS 由 taskStore 持有，task_end 后会保持连接直到用户切换任务/显式关闭。
+onBeforeUnmount(() => {});
 </script>
 
 <style scoped>

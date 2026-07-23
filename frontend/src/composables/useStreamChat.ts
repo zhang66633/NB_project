@@ -49,7 +49,7 @@ export function useStreamChat(sessionMode: SessionMode, chatMode: "chat" | "teac
     };
     chatSession.addMessage(sessionMode, sessionId, agentMsg);
 
-    chatSession.isRunning = true;
+    chatSession.setRunning(sessionMode);
 
     let acc = "";
     await streamChat(buildHistory(), {
@@ -63,14 +63,14 @@ export function useStreamChat(sessionMode: SessionMode, chatMode: "chat" | "teac
           content: acc || "（未收到回复内容）",
           streaming: false,
         });
-        chatSession.isRunning = false;
+        chatSession.setRunning(null);
       },
       onError(message) {
         chatSession.updateMessage(sessionMode, sessionId, agentMsg.id, {
           content: `出错了：${message}`,
           streaming: false,
         });
-        chatSession.isRunning = false;
+        chatSession.setRunning(null);
       },
     });
   }

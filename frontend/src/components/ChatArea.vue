@@ -1,6 +1,8 @@
 <template>
   <div class="flex flex-col h-full relative">
     <div ref="scrollRef" class="flex-1 overflow-y-auto px-4 sm:px-8 py-6 space-y-1">
+      <slot name="progress" />
+
       <div v-if="messages.length === 0 && !isRunning" class="flex flex-col justify-center h-full max-w-md mx-auto px-4">
         <p class="font-display text-xl text-muted-foreground">{{ emptyText }}</p>
         <p class="text-sm text-muted-foreground/70 mt-1">{{ emptySubtext }}</p>
@@ -33,6 +35,15 @@
           <span class="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style="animation-delay: 150ms" />
           <span class="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style="animation-delay: 300ms" />
         </div>
+        <button
+          v-if="cancellable"
+          class="ml-2 inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background px-2.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
+          :disabled="cancelling"
+          @click="$emit('cancel')"
+        >
+          <Square class="h-3 w-3" />
+          <span>{{ cancelling ? "停止中…" : "停止" }}</span>
+        </button>
       </div>
 
       <div ref="bottomRef" />
@@ -75,7 +86,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick, computed } from "vue";
-import { Brain, ArrowDown, Send, Loader2 } from "lucide-vue-next";
+import { Brain, ArrowDown, Send, Loader2, Square } from "lucide-vue-next";
 import { useTaskStore } from "@/stores/task";
 import Bubble from "@/components/Bubble.vue";
 import type { Message } from "@/types/response";
@@ -86,15 +97,20 @@ const props = withDefaults(defineProps<{
   emptyText?: string;
   emptySubtext?: string;
   inputPlaceholder?: string;
+  cancellable?: boolean;
+  cancelling?: boolean;
 }>(), {
   isRunning: false,
   emptyText: "开始对话",
   emptySubtext: "在下方输入你的问题",
   inputPlaceholder: "输入消息...",
+  cancellable: false,
+  cancelling: false,
 });
 
 const emit = defineEmits<{
   send: [text: string];
+  cancel: [];
 }>();
 
 const taskStore = useTaskStore();

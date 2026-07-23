@@ -3,7 +3,7 @@
     <div class="flex-1 min-w-0 relative">
       <ChatArea
         :messages="chatSession.activeChatMessages"
-        :is-running="chatSession.isRunning"
+        :is-running="chatSession.getIsRunning('chat').value"
         @send="handleUserSend"
       />
     </div>

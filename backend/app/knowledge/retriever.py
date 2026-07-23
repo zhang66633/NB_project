@@ -326,8 +326,20 @@ class HybridRetriever(BaseRetriever):
     # ── document builders (rich page_content for tag results) ──────────
 
     @staticmethod
+    def _fmt_str_or_obj(val, attr="mistake"):
+        """兼容 Union[str, Object]：str 直接返回，对象取 .attr 属性。"""
+        if isinstance(val, str):
+            return val
+        return getattr(val, attr, str(val))
+
+    @staticmethod
     def _card_to_document(card: MethodCard) -> Document:
         parts = [card.principle]
+        if card.formulas:
+            parts.append("公式: " + "; ".join(
+                f.latex if hasattr(f, 'latex') and f.latex else str(f)
+                for f in card.formulas
+            ))
         if card.typical_scenarios:
             parts.append("适用场景: " + "; ".join(card.typical_scenarios))
         if card.applicable_when:
@@ -337,47 +349,87 @@ class HybridRetriever(BaseRetriever):
         if card.common_mistakes:
             parts.append(
                 "常见误用: "
-                + "; ".join(m.mistake for m in card.common_mistakes)
+                + "; ".join(
+                    HybridRetriever._fmt_str_or_obj(m, "mistake")
+                    for m in card.common_mistakes
+                )
             )
         if card.code_snippets:
             parts.append(
                 "代码示例: "
-                + "\n".join(
-                    f"```{cs.language}\n{cs.code}\n```"
+                + "\n---\n".join(
+                    cs if isinstance(cs, str)
+                    else f"```{cs.language}\n{cs.code}\n```"
                     for cs in card.code_snippets
                 )
             )
+        # 追加新字段到 page_content（提升向量检索命中率）
+        extra = []
+        for tag_key, tag_val in (card.tags or {}).items():
+            if isinstance(tag_val, list):
+                extra.append(f"{tag_key}: " + ", ".join(tag_val))
+        if extra:
+            parts.append("标签: " + "; ".join(extra))
         return Document(
             page_content="\n".join(parts),
             metadata={
                 "type": "method_card",
                 "id": card.id,
                 "name": card.name,
+                "name_en": card.name_en or "",
                 "categories": card.category,
                 "related_cards": card.related_cards,
                 "related_papers": card.related_papers,
+                "difficulty": card.difficulty,
+                "quality_rating": card.quality_rating,
             },
         )
 
     @staticmethod
     def _paper_to_document(paper: Paper) -> Document:
+        a = paper.analysis
+        m = paper.model
+        e = paper.evaluation
         parts = [
             f"题目: {paper.title}",
             f"年份: {paper.year} | 竞赛: {paper.competition} | 赛题: {paper.problem_id}",
             f"问题类型: {paper.tags.get('problem_type', [])}",
             f"核心模型: {paper.tags.get('core_models', [])}",
-            f"问题概述: {paper.analysis.problem_summary}",
-            f"建模思路: {paper.model.approach}",
-            f"创新点: {paper.model.innovation}",
-            f"求解方法: {paper.model.solution_method}",
-            f"可学之处: {paper.evaluation.lessons}",
         ]
-        if paper.analysis.key_assumptions:
-            parts.append("关键假设: " + "; ".join(paper.analysis.key_assumptions))
-        if paper.evaluation.strengths:
-            parts.append("优点: " + "; ".join(paper.evaluation.strengths))
-        if paper.evaluation.weaknesses:
-            parts.append("不足: " + "; ".join(paper.evaluation.weaknesses))
+        # 兼容 union 类型：dict 用 .get()，Pydantic 对象用属性
+        if isinstance(a, dict):
+            parts.append(f"问题概述: {a.get('problem_summary', '')}")
+            if a.get("background"):
+                parts.append(f"背景: {a.get('background')}")
+            if a.get("key_insights"):
+                parts.append(f"关键洞察: {'; '.join(a.get('key_insights', []))}")
+            if a.get("solution_framework"):
+                parts.append(f"求解框架: {a.get('solution_framework')}")
+        else:
+            parts.append(f"问题概述: {a.problem_summary or ''}")
+            if a.key_assumptions:
+                parts.append("关键假设: " + "; ".join(a.key_assumptions))
+
+        if isinstance(m, dict):
+            parts.append(f"建模思路: {m.get('methodology', '')}")
+            parts.append(f"创新点: {m.get('innovations', '') or ''}")
+        else:
+            parts.append(f"建模思路: {m.approach or ''}")
+            parts.append(f"创新点: {m.innovation or ''}")
+
+        if isinstance(e, dict):
+            if e.get("strengths"):
+                parts.append("优点: " + "; ".join(e["strengths"]))
+            if e.get("weaknesses"):
+                parts.append("不足: " + "; ".join(e["weaknesses"]))
+        else:
+            if e.strengths:
+                parts.append("优点: " + "; ".join(e.strengths))
+            if e.weaknesses:
+                parts.append("不足: " + "; ".join(e.weaknesses))
+
+        if paper.takeaways:
+            parts.append("核心经验: " + "; ".join(paper.takeaways))
 
         return Document(
             page_content="\n".join(parts),
@@ -388,6 +440,7 @@ class HybridRetriever(BaseRetriever):
                 "year": paper.year,
                 "competition": paper.competition,
                 "problem_id": paper.problem_id,
+                "difficulty": paper.difficulty,
                 "quality_rating": paper.quality_rating,
             },
         )

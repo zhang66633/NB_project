@@ -14,6 +14,10 @@ Usage:
 from pathlib import Path
 
 import click
+from dotenv import load_dotenv
+
+# CLI entry: load .env so openai / openai_compatible can read env vars
+load_dotenv()
 
 from .embedder import KBEmbedder
 
@@ -31,9 +35,9 @@ from .embedder import KBEmbedder
 )
 @click.option(
     "--embedding-provider",
-    default="openai",
-    type=click.Choice(["openai", "huggingface"]),
-    help="Embedding provider.",
+    default=None,
+    type=click.Choice(["openai", "openai_compatible", "huggingface"]),
+    help="Embedding provider (default: from KB_EMBEDDING_PROVIDER env).",
 )
 @click.option(
     "--incremental",
@@ -88,7 +92,7 @@ def index_knowledge_base(
     )
 
     count = embedder.build_index(incremental=incremental)
-    click.echo(f"\n✓ Indexed {count} documents successfully.")
+    click.echo(f"\n[OK] Indexed {count} documents successfully.")
 
 
 if __name__ == "__main__":

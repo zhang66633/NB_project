@@ -1,57 +1,45 @@
 """Knowledge base Pydantic schemas for YAML validation."""
 
-from typing import List, Optional
+from typing import List, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Formula(BaseModel):
-    name: str
-    latex: str
-    description: str
+    name: str = ""
+    latex: str = ""
+    description: str = ""
 
 
 class CodeSnippet(BaseModel):
-    language: str
-    description: str
-    code: str
+    language: str = ""
+    description: str = ""
+    code: str = ""
 
 
 class Mistake(BaseModel):
-    mistake: str
-    solution: str
+    mistake: str = ""
+    solution: str = ""
 
 
 class MethodCard(BaseModel):
     id: str = Field(pattern=r"^mc_\d+$")
     name: str
+    name_en: str = ""
     category: List[str]
     principle: str
-    formulas: List[Formula] = Field(default_factory=list)
+    # 兼容纯字符串（新格式 "公式文本"）和结构化对象（旧格式 {name,latex,description}）
+    formulas: List[Union[str, Formula]] = Field(default_factory=list)
     applicable_when: List[str] = Field(default_factory=list)
     not_applicable_when: List[str] = Field(default_factory=list)
     typical_scenarios: List[str] = Field(default_factory=list)
-    common_mistakes: List[Mistake] = Field(default_factory=list)
-    code_snippets: List[CodeSnippet] = Field(default_factory=list)
+    common_mistakes: List[Union[str, Mistake]] = Field(default_factory=list)
+    code_snippets: List[Union[str, CodeSnippet]] = Field(default_factory=list)
     related_cards: List[str] = Field(default_factory=list)
     related_papers: List[str] = Field(default_factory=list)
-
-
-class Formula(BaseModel):
-    name: str
-    latex: str
-    description: str
-
-
-class CodeSnippet(BaseModel):
-    language: str
-    description: str
-    code: str
-
-
-class Mistake(BaseModel):
-    mistake: str
-    solution: str
+    difficulty: int = Field(ge=1, le=5, default=3)
+    quality_rating: int = Field(ge=1, le=5, default=3)
+    tags: dict = Field(default_factory=dict)
 
 
 class PaperAnalysis(BaseModel):
@@ -77,30 +65,32 @@ class PaperEvaluation(BaseModel):
 class Paper(BaseModel):
     """论文知识卡片 — 深度结构化拆解。
 
-    不仅要记录元数据，更要提取可复用的建模知识：
-    方法链、核心公式、算法伪代码、假设分析、常见陷阱。
+    分析、模型、评价三字段兼容两种格式：
+    - 旧格式: 嵌套对象 (PaperAnalysis/PaperModel/PaperEvaluation)
+    - 新格式: 自由 dict (直接写 background/decomposition/formulas 等)
     """
     id: str = Field(pattern=r"^paper_.+$")
     year: int
-    competition: str  # 国赛 / 美赛 / 研赛
-    problem_id: str
+    competition: str
+    problem_id: str = ""
     title: str
     tags: dict = Field(default_factory=dict)
-    # 题目关联
-    problem_ref: str = ""               # 关联的题目 ID，如 "prob_001"
-    # 深度拆解字段（新增）
-    problem_context: str = ""           # 问题背景全文（500-1000字）
-    methodology_chain: List[str] = Field(default_factory=list)  # 方法链路 ["数据清洗→特征工程→ARIMA预测→线性规划优化"]
-    key_formulas: List[Formula] = Field(default_factory=list)   # 论文中出现的核心公式
-    algorithm_outline: List[CodeSnippet] = Field(default_factory=list)  # 算法伪代码/步骤
-    assumption_analysis: List[str] = Field(default_factory=list)  # 每个假设的合理性分析
-    reusable_patterns: List[str] = Field(default_factory=list)   # 可以复用到其他问题的模式
-    common_pitfalls: List[Mistake] = Field(default_factory=list) # 效仿本文时易犯的错误
-    difficulty_level: str = "medium"    # easy / medium / hard
-    # 原有字段
-    analysis: PaperAnalysis = Field(default_factory=PaperAnalysis)
-    model: PaperModel = Field(default_factory=PaperModel)
-    evaluation: PaperEvaluation = Field(default_factory=PaperEvaluation)
+    problem_ref: str = ""
+    problem_context: str = ""
+    methodology_chain: List[str] = Field(default_factory=list)
+    key_formulas: List[Formula] = Field(default_factory=list)
+    algorithm_outline: List[CodeSnippet] = Field(default_factory=list)
+    assumption_analysis: List[str] = Field(default_factory=list)
+    reusable_patterns: List[str] = Field(default_factory=list)
+    common_pitfalls: List[Mistake] = Field(default_factory=list)
+    difficulty: int = Field(ge=1, le=5, default=3)
+    difficulty_level: str = "medium"
+    # 三核心字段: 兼容 dict（新格式）或 嵌套对象（旧格式）
+    analysis: Union[dict, PaperAnalysis] = Field(default_factory=PaperAnalysis)
+    model: Union[dict, PaperModel] = Field(default_factory=PaperModel)
+    evaluation: Union[dict, PaperEvaluation] = Field(default_factory=PaperEvaluation)
+    # 新增：结构化经验提取
+    takeaways: List[str] = Field(default_factory=list)
     source: str = ""
     quality_rating: int = Field(ge=1, le=5, default=3)
 
@@ -135,10 +125,19 @@ class TemplateStep(BaseModel):
     guiding_questions: List[str] = Field(default_factory=list)
     decision_tree: List[str] = Field(default_factory=list)
     checklist: List[str] = Field(default_factory=list)
+    # 新格式兼容
+    action: str = ""
+    outputs: List[str] = Field(default_factory=list)
 
 
 class Template(BaseModel):
     id: str = Field(pattern=r"^tpl_.+$")
     name: str
+    name_en: str = ""
+    description: str = ""
+    category: str = ""
     applicable_to: List[str] = Field(default_factory=list)
     steps: List[TemplateStep] = Field(default_factory=list)
+    applicable_methods: List[dict] = Field(default_factory=list)
+    quality_rating: int = Field(ge=1, le=5, default=3)
+    tags: dict = Field(default_factory=dict)

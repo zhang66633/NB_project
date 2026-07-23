@@ -121,6 +121,10 @@ class KBEmbedder:
         if not documents:
             return 0
 
+        # Clean metadata (Chroma rejects empty lists)
+        for doc in documents:
+            doc.metadata = self._clean_metadata(doc.metadata)
+
         # Clear existing persistence
         self.persist_dir.mkdir(parents=True, exist_ok=True)
         Chroma(
@@ -265,6 +269,11 @@ class KBEmbedder:
             persist_directory=str(self.persist_dir),
             embedding_function=self.embeddings,
         )
+
+    @staticmethod
+    def _clean_metadata(meta: dict) -> dict:
+        """Remove empty lists/strings from metadata (Chroma rejects them)."""
+        return {k: v for k, v in meta.items() if v not in ([], "", None)}
 
     # ── file scanning ───────────────────────────────────────────────
 

@@ -122,9 +122,12 @@ async def _event_stream(req: ChatRequest, api_key_config: dict | None = None):
         # 循环：每轮 LLM 输出可能含文本 + tool_calls；若有 tool_calls 则执行后回灌
         for _ in range(MAX_TOOL_ITERATIONS):
             text_buf: list[str] = []
-            tool_calls_pending: list[dict] = []
+            full_message = None  # 累加所有 chunk 得到完整 AIMessage
 
             async for chunk in llm_with_tools.astream(messages):
+                # 累加 chunk 以获取完整的 tool_calls
+                full_message = chunk if full_message is None else full_message + chunk
+
                 # 文本增量
                 delta = getattr(chunk, "content", None)
                 if delta:
@@ -137,21 +140,15 @@ async def _event_stream(req: ChatRequest, api_key_config: dict | None = None):
                         text_buf.append(delta)
                         yield f"data: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n"
 
-                # 工具调用（一般在最后一个 chunk 一次性给出完整 args）
-                tc_list = getattr(chunk, "tool_call_chunks", None) or getattr(chunk, "tool_calls", None)
-                if tc_list:
-                    # tool_call_chunks 增量累加；tool_calls 是已结构化的完整调用
-                    # 我们以最终合并的 tool_calls 为准
-                    for tc in tc_list:
-                        if isinstance(tc, dict) and tc.get("name") and tc not in tool_calls_pending:
-                            tool_calls_pending.append(tc)
+            # 从累加后的完整消息中提取 tool_calls（args 已完整解析）
+            tool_calls_final = getattr(full_message, "tool_calls", None) or []
 
             # 没有工具调用 → 这一轮是纯文本回答，跳出循环
-            if not tool_calls_pending:
+            if not tool_calls_final:
                 break
 
             # 通知前端：开始调用工具
-            for tc in tool_calls_pending:
+            for tc in tool_calls_final:
                 yield f"data: {json.dumps({'tool_call': {'name': tc.get('name'), 'args': tc.get('args') or {}}}, ensure_ascii=False)}\n\n"
 
             # 把 LLM 的 tool_calls 写回消息历史（AIMessage with tool_calls）
@@ -164,13 +161,13 @@ async def _event_stream(req: ChatRequest, api_key_config: dict | None = None):
                             "name": tc.get("name"),
                             "args": tc.get("args") or {},
                         }
-                        for tc in tool_calls_pending
+                        for tc in tool_calls_final
                     ],
                 )
             )
 
             # 执行每个工具
-            for tc in tool_calls_pending:
+            for tc in tool_calls_final:
                 tool_name = tc.get("name")
                 tool_args = tc.get("args") or {}
                 tool = tool_map.get(tool_name)

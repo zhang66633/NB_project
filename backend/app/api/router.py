@@ -28,7 +28,7 @@ api_router.include_router(files_router)
 
 # ── Auth（内联，轻量 OAuth）──
 
-from ..auth import GitHubUser, get_current_user, ALLOWED_CONTRIBUTORS
+from ..auth import GitHubUser, get_current_user, ALLOWED_CONTRIBUTORS, TokenResponse
 
 _auth_router = APIRouter()
 
@@ -73,20 +73,25 @@ async def github_callback(code: str = Query(...)):
         {"sub": login, "exp": datetime.utcnow() + timedelta(days=7)},
         settings.jwt_secret, algorithm="HS256",
     )
-    return JSONResponse(content={
-        "token": token, "user": {"login": login,
-        "name": gh_user.get("name", login),
-        "avatar_url": gh_user.get("avatar_url", "")},
-    })
+    return TokenResponse(
+        access_token=token,
+        user=GitHubUser(
+            id=gh_user.get("id", 0),
+            login=login,
+            name=gh_user.get("name", login),
+            avatar_url=gh_user.get("avatar_url", ""),
+        ),
+    )
 
 @_auth_router.get("/auth/user")
 async def get_user_info(user: GitHubUser | None = Depends(get_current_user)):
     if not user:
-        return JSONResponse(content={"authenticated": False})
-    return JSONResponse(content={
-        "authenticated": True,
-        "user": {"login": user.login, "name": user.name, "avatar_url": user.avatar},
-    })
+        return UserResponse(authenticated=False)
+    return UserResponse(
+        authenticated=True,
+        user=user,
+        is_contributor=user.login.lower() in {c.lower() for c in ALLOWED_CONTRIBUTORS},
+    )
 
 @_auth_router.post("/auth/logout")
 async def logout():

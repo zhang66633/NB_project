@@ -286,9 +286,10 @@ class HybridRetriever(BaseRetriever):
 
         for paper in self.loader.load_all_papers():
             text = " ".join([
-                paper.title, str(paper.year), paper.competition or "",
-                (paper.analysis.get("problem_summary") if isinstance(paper.analysis, dict)
-                 else paper.analysis.problem_summary if paper.analysis else ""),
+                paper.title or "", str(paper.year),
+                paper.competition or "",
+                (paper.analysis.get("problem_summary") or "" if isinstance(paper.analysis, dict)
+                 else getattr(paper.analysis, "problem_summary", "") if paper.analysis else ""),
                 " ".join(paper.tags.get("problem_type", []) or []),
                 " ".join(paper.tags.get("core_models", []) or []),
             ])

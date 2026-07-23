@@ -127,6 +127,7 @@ async def _run_orchestrator(task_id: str, problem: str, mode: str, user_id: str 
         print(f"[Orch] Streaming task={task_id}", flush=True)
         async for chunk in orchestrator.astream(state, {"recursion_limit": 50}, stream_mode="updates"):
             print(f"[Orch] Node: {list(chunk.keys())}", flush=True)
+            for node_name, node_output in chunk.items():
                 stage, desc = node_meta.get(node_name, (node_name, f"执行: {node_name}"))
                 progress_msg = {
                     "id": str(uuid.uuid4())[:8],

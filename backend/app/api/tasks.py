@@ -138,6 +138,7 @@ async def _run_orchestrator(task_id: str, problem: str, mode: str, user_id: str 
         final_state = state
 
         async for chunk in orchestrator.astream(state, {"recursion_limit": 50}, stream_mode="updates"):
+            with open("_orch_trace.log", "a") as f: f.write(f"node: {list(chunk.keys())}\n")
             for node_name, node_output in chunk.items():
                 stage, desc = node_meta.get(node_name, (node_name, f"执行: {node_name}"))
                 progress_msg = {

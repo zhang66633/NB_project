@@ -72,7 +72,6 @@ export function useStreamChat(sessionMode: SessionMode, chatMode: "chat" | "teac
         const msgs = chatSession.getActiveMessages(sessionMode).value;
         const idx = msgs.findIndex((m) => m.id === agentMsg.id);
         if (idx >= 0) {
-          chatSession.activeChatSessions[0]; // no-op for type
           // 直接通过 store 内部方法插入更优雅，但目前接口只有 push/append；
           // 这里改为把工具消息 append 在 agent 之后，agent 仍是"回答"，工具在它上方
         }

@@ -11,8 +11,8 @@ export const useTaskStore = defineStore("task", () => {
   // 每个 task 的进度/结果消息（system 进度 + agent 最终答案）
   const messagesByTask = ref<Record<string, Message[]>>({});
   const currentTaskId = ref<string | null>(null);
-  // solution 页关联的后端 task_id（持久化，避免切页后丢失 → 进度消息不再渲染）
-  const solutionTaskId = ref<string | null>(null);
+  // solution 任务的进度消息由 solution/index.vue 通过 watch 同步到 chatSession，
+  // 保证切页/刷新后不丢失；taskStore 仅作 WS 连接管理 + 即时进度缓存。
   let ws: TaskWebSocket | null = null;
   const wsStatus = ref<"connecting" | "connected" | "disconnected" | "reconnecting">("disconnected");
   const isRunning = ref(false);
@@ -149,7 +149,8 @@ export const useTaskStore = defineStore("task", () => {
     currentStep.value = "";
 
     const baseUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8000/api/ws";
-    const wsUrl = `${baseUrl}/task/${taskId}`;
+    const token = localStorage.getItem("mma:token") || "";
+    const wsUrl = `${baseUrl}/task/${taskId}?token=${encodeURIComponent(token)}`;
 
     ws = new TaskWebSocket(
       wsUrl,
@@ -166,7 +167,9 @@ export const useTaskStore = defineStore("task", () => {
 
   return {
     messages, wsStatus, isRunning, completed, currentStep, currentTaskId,
-    solutionTaskId,
     connectWebSocket, closeWebSocket, setCurrentTask, appendMessage,
   };
 });
+// ⚠️ 故意不持久化 taskStore：messagesByTask 含 LLM 全文太大、且不能与 isRunning/
+//    completed 同步持久化（否则刷新后会出现"显示思考中但无消息"的白屏诡异状态）。
+//    路由切页不丢（pinia store 跨路由保留）；刷新页面后用户需重新触发。

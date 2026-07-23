@@ -10,7 +10,7 @@
       </button>
       <ChatArea
         :messages="displayMessages"
-        :is-running="chatSession.getIsRunning('solution').value"
+        :is-running="chatSession.getIsRunning('solution')"
         :cancellable="!!currentTaskId"
         :cancelling="cancelling"
         empty-text="开始建模"
@@ -66,12 +66,11 @@ const taskStore = useTaskStore();
 
 const rightPanelOpen = ref(true);
 
-// 关联的 task_id 放到 taskStore（持久化），避免切页后丢失导致进度/结果不渲染。
-// 见 stores/task.ts 的 solutionTaskId 字段。
-const currentTaskId = computed({
-  get: () => taskStore.solutionTaskId,
-  set: (v: string | null) => { taskStore.solutionTaskId = v; },
-});
+// solution 页关联的 task_id：原本想放 taskStore（持久化），但 messagesByTask
+// 不持久化会导致"刷新后显示 Task ID 但 messages 为空"白屏。
+// 改为：task_id 仅在本次 session 内存中持有，刷新后用户重新触发即可；
+// 任务进度消息本身已通过 chatSession.solutionSessions 持久化（向下兼容）。
+const currentTaskId = ref<string | null>(null);
 const cancelling = ref(false);
 
 const stepDefs: ProgressStep[] = [
@@ -120,6 +119,25 @@ const displayMessages = computed<Message[]>(() => {
   const taskMsgs = currentTaskId.value ? taskStore.messages : [];
   return [...userMsgs, ...taskMsgs];
 });
+
+/** 把 taskStore 推送的进度/final 消息同步到 chatSession（持久化）。 */
+function syncTaskMsgToSession(msg: Message) {
+  const sid = chatSession.activeSolutionId;
+  if (!sid) return;
+  // 同一 id 已存在则跳过，避免重复（多次 sync）
+  const list = chatSession.activeSolutionMessages;
+  if (list.find((m) => m.id === msg.id)) return;
+  chatSession.addMessage("solution", sid, msg);
+}
+
+watch(
+  () => taskStore.messages,
+  (newMsgs) => {
+    // 把新推进来的消息同步到 chatSession（仅同步增量）
+    for (const m of newMsgs) syncTaskMsgToSession(m);
+  },
+  { deep: true },
+);
 
 function generateId() {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -206,17 +224,12 @@ onMounted(() => {
   if (!chatSession.activeSolutionId && chatSession.sortedSolutionSessions.length > 0) {
     chatSession.switchSession("solution", chatSession.sortedSolutionSessions[0].id);
   }
-  // 切回 solution 页时：connectWebSocket 内部有短路逻辑
-  // - 已连到目标 task → 直接复用
-  // - 断开 / 连接到别的 task → 重连
-  // 这样切页回来不会卡"思考中"，也不会重复打开 WS 把进度搞丢。
-  if (taskStore.solutionTaskId && !taskStore.completed) {
-    taskStore.connectWebSocket(taskStore.solutionTaskId);
-  }
+  // 当前页面内的 task_id 不持久化（与 taskStore.messagesByTask 一致），刷新后
+  // 用户需重新触发任务；路由切页通过 chatSession 持久化保留历史消息。
 });
 
-// 注意：故意不在 onUnmounted 关闭 WS / 清空 task_id，避免切页导致任务进度丢失。
-// WS 与 solutionTaskId 都由 taskStore 持有，task_end 事件会清运行态。
+// 注意：故意不在 onUnmounted 关闭 WS，避免切页导致任务进度丢失。
+// WS 由 taskStore 持有，task_end 后会保持连接直到用户切换任务/显式关闭。
 onBeforeUnmount(() => {});
 </script>
 

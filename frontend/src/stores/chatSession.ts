@@ -36,7 +36,7 @@ export const useChatSessionStore = defineStore(
     const runningMode = ref<SessionMode | null>(null);
 
     function getIsRunning(mode: SessionMode) {
-      return computed(() => runningMode.value === mode);
+      return runningMode.value === mode;
     }
     function setRunning(mode: SessionMode | null) {
       runningMode.value = mode;

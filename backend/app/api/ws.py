@@ -4,22 +4,30 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
 from ..config import get_settings
 from ..services.redis_pubsub import RedisSubscriber
+from ..auth.dependencies import decode_jwt
 
 logger = logging.getLogger(__name__)
 ws_router = APIRouter()
 
 
 @ws_router.websocket("/ws/task/{task_id}")
-async def task_websocket(websocket: WebSocket, task_id: str):
+async def task_websocket(websocket: WebSocket, task_id: str, token: str = Query(default="")):
     """WebSocket endpoint for real-time task message streaming.
 
+    Requires a valid JWT passed as ?token=<jwt> query parameter.
     Subscribes to Redis Pub/Sub channel ``task:{task_id}`` and forwards
     every published event to the connected frontend client.
     """
+    # ── 鉴权：校验 token ──
+    user = decode_jwt(token) if token else None
+    if user is None:
+        await websocket.close(code=4001, reason="未认证：请提供有效 token")
+        return
+
     await websocket.accept()
     settings = get_settings()
 

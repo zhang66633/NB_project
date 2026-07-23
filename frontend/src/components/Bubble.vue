@@ -99,7 +99,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref, watch, onMounted } from "vue";
 import { marked } from "marked";
 import markedKatex from "marked-katex-extension";
 import {
@@ -110,6 +110,7 @@ import {
   XCircle,
   Printer,
   Clipboard,
+  ChevronRight,
 } from "lucide-vue-next";
 import type { Message, SystemMessage as SysMsg, AgentMessage, ToolMessage } from "@/types/response";
 import { AgentType } from "@/types/enum";

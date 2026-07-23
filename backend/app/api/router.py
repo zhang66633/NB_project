@@ -2,7 +2,7 @@
 import logging, os
 from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import RedirectResponse, JSONResponse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import httpx
 from jose import jwt
 
@@ -28,7 +28,7 @@ api_router.include_router(files_router)
 
 # ── Auth（内联，轻量 OAuth）──
 
-from ..auth import GitHubUser, get_current_user, ALLOWED_CONTRIBUTORS, TokenResponse
+from ..auth import GitHubUser, get_current_user, ALLOWED_CONTRIBUTORS, TokenResponse, UserResponse
 
 _auth_router = APIRouter()
 
@@ -70,7 +70,7 @@ async def github_callback(code: str = Query(...)):
     if login not in contributors:
         raise HTTPException(status_code=403, detail="仅项目贡献者可登录")
     token = jwt.encode(
-        {"sub": login, "exp": datetime.utcnow() + timedelta(days=7)},
+        {"sub": login, "exp": datetime.now(timezone.utc) + timedelta(days=7)},
         settings.jwt_secret, algorithm="HS256",
     )
     return TokenResponse(

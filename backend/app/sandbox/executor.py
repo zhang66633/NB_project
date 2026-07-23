@@ -1,6 +1,14 @@
-"""代码沙箱 — subprocess 安全执行 Python 代码。"""
+"""代码沙箱 — subprocess 安全执行 Python 代码。
+
+安全措施:
+  - 内存/CPU/文件大小限制 (Unix resource.setrlimit)
+  - 网络访问阻断 (socket monkey-patch)
+  - 环境变量清洗 (不泄露父进程 API key)
+  - 执行超时 (subprocess timeout)
+"""
 
 import subprocess
+import sys
 import tempfile
 import os
 import uuid
@@ -10,12 +18,49 @@ from typing import Optional
 from app.config import get_settings
 
 
+def _make_preexec_fn(max_memory_mb: int, timeout: int):
+    """创建 Unix preexec_fn 设置资源限制。Windows 下返回 None。"""
+    try:
+        import resource
+    except ImportError:
+        # Windows 无 resource 模块
+        return None
+
+    def _set_limits():
+        mem_bytes = max_memory_mb * 1024 * 1024
+        # 限制虚拟内存
+        resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))
+        # 限制 CPU 时间（秒）
+        resource.setrlimit(resource.RLIMIT_CPU, (timeout, timeout))
+        # 限制单个文件大小 50MB
+        file_limit = 50 * 1024 * 1024
+        resource.setrlimit(resource.RLIMIT_FSIZE, (file_limit, file_limit))
+        # 禁止 fork 子进程
+        resource.setrlimit(resource.RLIMIT_NPROC, (0, 0))
+
+    return _set_limits
+
+
+def _clean_env() -> dict:
+    """构建清洗后的子进程环境变量，仅保留 Python 运行必需项。"""
+    safe_keys = {"PATH", "PYTHONPATH", "PYTHONIOENCODING", "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE", "SYSTEMROOT", "COMSPEC"}
+    env = {k: v for k, v in os.environ.items() if k.upper() in safe_keys}
+    env["PYTHONIOENCODING"] = "utf-8"
+    # 显式阻断代理，防止通过 proxy 绕过网络限制
+    env.pop("HTTP_PROXY", None)
+    env.pop("HTTPS_PROXY", None)
+    env.pop("http_proxy", None)
+    env.pop("https_proxy", None)
+    return env
+
+
 class SandboxExecutor:
     """在受限子进程中执行 Python 代码。"""
 
     def __init__(self, timeout: Optional[int] = None):
         settings = get_settings()
         self.timeout = timeout or settings.sandbox_timeout
+        self.max_memory_mb = settings.sandbox_max_memory_mb
         self.output_dir = Path(tempfile.gettempdir()) / "mathmodel_outputs"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -25,18 +70,20 @@ class SandboxExecutor:
         output_subdir = self.output_dir / run_id
         output_subdir.mkdir(parents=True, exist_ok=True)
 
-        # 包装代码：自动保存 matplotlib 图表
+        # 包装代码：阻断网络 + 自动保存 matplotlib 图表
         wrapped_code = self._wrap_code(code, str(output_subdir))
 
         try:
             result = subprocess.run(
-                ["python", "-c", wrapped_code],
+                [sys.executable, "-c", wrapped_code],
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,
                 cwd=str(output_subdir),
                 encoding="utf-8",
                 errors="replace",
+                env=_clean_env(),
+                preexec_fn=_make_preexec_fn(self.max_memory_mb, self.timeout),
             )
 
             # 收集生成的图片
@@ -70,8 +117,16 @@ class SandboxExecutor:
             }
 
     def _wrap_code(self, code: str, output_dir: str) -> str:
-        """包装用户代码，自动捕获 matplotlib 输出。"""
+        """包装用户代码：阻断网络 + 自动捕获 matplotlib 输出。"""
         return f'''
+# ── 网络阻断：禁止任何 socket 连接 ──
+import socket as _socket
+_original_connect = _socket.socket.connect
+def _blocked_connect(self, *args, **kwargs):
+    raise OSError("网络访问已被沙箱禁止")
+_socket.socket.connect = _blocked_connect
+del _socket, _original_connect
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt

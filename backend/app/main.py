@@ -24,6 +24,21 @@ from .config import get_settings
 async def lifespan(app: FastAPI):
     """Application startup/shutdown events."""
     settings = get_settings()
+
+    # JWT secret 安全校验
+    if settings.jwt_secret == "set-in-env-file":
+        if not settings.debug:
+            raise RuntimeError(
+                "jwt_secret 未配置！生产环境必须在 .env 中设置 JWT_SECRET。"
+            )
+        import secrets as _secrets
+        settings.jwt_secret = _secrets.token_urlsafe(32)
+        print(
+            "[WARNING] JWT_SECRET 未配置，已生成随机临时密钥（重启后 token 失效）。"
+            "请在 .env 中设置 JWT_SECRET。",
+            flush=True,
+        )
+
     print(f"MathModelAgent backend starting on {settings.host}:{settings.port}")
 
     yield

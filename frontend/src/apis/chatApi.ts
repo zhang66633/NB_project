@@ -39,11 +39,7 @@ export interface StreamChatOptions {
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
 function getToken(): string | null {
-  return (
-    localStorage.getItem("mma-token") ||
-    localStorage.getItem("token") ||
-    localStorage.getItem("access_token")
-  );
+  return localStorage.getItem("mma:token");
 }
 
 export async function streamChat(

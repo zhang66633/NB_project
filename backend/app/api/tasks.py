@@ -86,7 +86,7 @@ def _run_orchestrator_sync(task_id: str, problem: str, mode: str, user_id: str =
 async def _run_orchestrator(task_id: str, problem: str, mode: str, user_id: str = "guest"):
     """在后台运行 LangGraph 编排器。"""
     try:
-        logger.info("Orchestrator started: task=%s mode=%s", task_id, mode)
+        print(f"[Orch] Started: task={task_id} mode={mode}", flush=True)
         from app.core.state import create_initial_state
         from app.core.workflow import get_orchestrator
 
@@ -122,9 +122,9 @@ async def _run_orchestrator(task_id: str, problem: str, mode: str, user_id: str 
         messages = []
         final_state = state
 
-        logger.info("Starting orchestrator.astream for task=%s", task_id)
+        print(f"[Orch] Streaming task={task_id}", flush=True)
         async for chunk in orchestrator.astream(state, {"recursion_limit": 50}, stream_mode="updates"):
-            logger.info("Chunk: %s", list(chunk.keys()))
+            print(f"[Orch] Node: {list(chunk.keys())}", flush=True)
                 stage, desc = node_meta.get(node_name, (node_name, f"执行: {node_name}"))
                 progress_msg = {
                     "id": str(uuid.uuid4())[:8],

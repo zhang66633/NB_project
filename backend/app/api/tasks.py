@@ -40,11 +40,9 @@ async def create_task(
 
     # 在独立线程中运行编排器（节点含同步阻塞调用 llm.invoke / subprocess），
     # 以免阻塞事件循环导致 HTTP 响应体无法刷新、WS 进度卡住
-    print(f"[API] Spawning orchestrator for task={task_id}", flush=True)
     asyncio.create_task(
         asyncio.to_thread(_run_orchestrator_sync, task_id, req.problem, req.mode, uid)
     )
-    print(f"[API] Orchestrator spawned for task={task_id}", flush=True)
 
     return TaskResponse(**task)
 
@@ -83,7 +81,13 @@ async def list_tasks():
 def _run_orchestrator_sync(task_id: str, problem: str, mode: str, user_id: str = "guest"):
     """在线程池中运行的同步入口（节点含阻塞调用，必须脱离事件循环）。"""
     try:
-        asyncio.run(_run_orchestrator(task_id, problem, mode, user_id))
+        # 子线程中 asyncio.run() 默认不创建 ThreadPoolExecutor，
+        # 导致 langgraph 内部的 run_in_executor 调用失败。
+        import concurrent.futures
+        loop = asyncio.new_event_loop()
+        loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=4))
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(_run_orchestrator(task_id, problem, mode, user_id))
     except Exception:
         import traceback
         with open("_orch_error.log", "a", encoding="utf-8") as f:
@@ -94,7 +98,6 @@ def _run_orchestrator_sync(task_id: str, problem: str, mode: str, user_id: str =
 async def _run_orchestrator(task_id: str, problem: str, mode: str, user_id: str = "guest"):
     """在后台运行 LangGraph 编排器。"""
     try:
-        print(f"[Orch] Started: task={task_id} mode={mode}", flush=True)
         from app.core.state import create_initial_state
         from app.core.workflow import get_orchestrator
 
@@ -130,9 +133,7 @@ async def _run_orchestrator(task_id: str, problem: str, mode: str, user_id: str 
         messages = []
         final_state = state
 
-        print(f"[Orch] Streaming task={task_id}", flush=True)
         async for chunk in orchestrator.astream(state, {"recursion_limit": 50}, stream_mode="updates"):
-            print(f"[Orch] Node: {list(chunk.keys())}", flush=True)
             for node_name, node_output in chunk.items():
                 stage, desc = node_meta.get(node_name, (node_name, f"执行: {node_name}"))
                 progress_msg = {

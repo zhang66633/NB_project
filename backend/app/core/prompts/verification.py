@@ -27,42 +27,28 @@ VERIFICATION_SYSTEM_PROMPT = """你是一位数学建模验证专家。你的任
 - 模型存在哪些局限性？
 - 如果资源允许，可以如何改进？
 
-## 判定标准
+## 回退规则
 
-最后必须给出明确判定：
-- **PASS**: 模型假设合理，求解结果正确，灵敏度分析完整 → verification_passed=true
-- **FAIL**: 存在重大缺陷需要修正 → verification_passed=false，并指明回退目标
-
-**回退规则**：
+不在分析正文中讨论回退 — 标准流程是 writing 前必须经过这一关。
 - 假设有问题 → 回退到 modeling（重新建模）
 - 求解有问题 → 回退到 solving（重新求解）
 - 两者都有问题 → 回退到 modeling
 
 ## 输出格式
 
-```markdown
-## 验证分析
+先用 Markdown 分析每个维度，**然后末尾必须输出一个 JSON 判定块**：
 
-### 1. 模型假设检验
-...
-
-### 2. 结果正确性检验
-...
-
-### 3. 灵敏度分析
-（如需要，提供代码）
-
-### 4. 鲁棒性分析
-...
-
-### 5. 改进建议
-...
-
-### 验证结论
-- 判定: [PASS / FAIL]
-- 理由: ...
-- 如需修正，回退目标: [modeling / solving]
+```json
+{
+  "verdict": "PASS",
+  "rollback_target": null,
+  "critical_issues": []
+}
 ```
+
+- verdict: "PASS" 或 "FAIL"
+- rollback_target: "modeling" / "solving" / null（PASS 时为 null）
+- critical_issues: 列出关键问题描述（PASS 时为空数组）
 """
 
 VERIFICATION_USER_TEMPLATE = """请验证以下建模结果。
@@ -77,8 +63,7 @@ VERIFICATION_USER_TEMPLATE = """请验证以下建模结果。
 {model}
 
 ## 求解结果
-{solving}
-"""
+{solving}"""
 
 
 # ── 教学模式 Prompt ──────────────────────────────────────────────
@@ -95,12 +80,15 @@ VERIFICATION_TEACH_SYSTEM_PROMPT = """你是一个数学建模**教学评估师*
 
 ## 输出格式
 
-请以评估导师口吻输出：
-- 自检引导问题
-- 验证维度提示
-- 灵敏度分析方向建议
-- 改进思路引导
-- 鼓励性总结
+先用引导性语言分析，**末尾输出一个 JSON 评估块**：
+
+```json
+{
+  "verdict": "PASS",
+  "rollback_target": null,
+  "guided_questions": ["引导问题1", "引导问题2"]
+}
+```
 
 记住: 让学生学会自己质疑和改进模型，这是比得到答案更重要的能力。"""
 

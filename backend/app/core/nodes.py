@@ -542,20 +542,17 @@ def verification_agent_node(state: AgentState) -> dict:
 
     full_text = str(response.content)
 
-    # 解析判定结果
-    passed = "FAIL" not in full_text.upper().split("判定")[-1][:50] if "判定" in full_text else True
+    # 提取 JSON 判定块
+    ver_json = {}
+    json_match = re.search(r'\{[^{}]*"verdict"\s*:\s*"(PASS|FAIL)"[^{}]*\}', full_text)
+    if json_match:
+        try:
+            ver_json = json.loads(json_match.group(0))
+        except json.JSONDecodeError:
+            ver_json = {}
 
-    # 检查是否有明确的 FAIL 标记
-    if "FAIL" in full_text or "不通过" in full_text:
-        passed = False
-
-    # 确定回退目标
-    rollback = "modeling"
-    if "回退目标" in full_text:
-        if "solving" in full_text.lower():
-            rollback = "solving"
-    elif "求解" in full_text and "不正确" in full_text:
-        rollback = "solving"
+    passed = ver_json.get("verdict", "PASS") == "PASS"
+    rollback = ver_json.get("rollback_target", "modeling") if not passed else "modeling"
 
     # 如果有代码块，尝试执行灵敏度分析
     code = _extract_code_block(full_text)

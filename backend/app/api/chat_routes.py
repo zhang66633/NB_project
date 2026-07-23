@@ -18,7 +18,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from .schemas.request import ChatRequest
 from ..core.llm.factory import LLMFactory
-from ..core.prompts.agent_prompts import MARKDOWN_RULES, TEACH_SHARED_RULES
+from ..core.prompts._shared import MARKDOWN_RULES, TEACH_SHARED_RULES
 from ..auth import GitHubUser, get_current_user
 
 logger = logging.getLogger(__name__)

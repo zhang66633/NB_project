@@ -9,8 +9,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class LLMConfig(BaseSettings):
     """Configuration for a single LLM instance."""
 
-    provider: Literal["anthropic", "openai"] = "anthropic"
-    model: str = "claude-sonnet-4-6"
+    provider: Literal["anthropic", "openai"] = "openai"
+    model: str = "deepseek-chat"
     api_key: str = ""
     base_url: Optional[str] = None
     temperature: float = 0.3
@@ -41,13 +41,13 @@ class Settings(BaseSettings):
     kb_embedding_api_key: str = ""
 
     # ---- LLM Models (per agent role) ----
-    classifier_model: str = "claude-sonnet-4-6"
-    planner_model: str = "claude-sonnet-4-6"
-    analysis_model: str = "claude-sonnet-4-6"
-    modeling_model: str = "claude-sonnet-4-6"
-    solving_model: str = "claude-sonnet-4-6"
-    verification_model: str = "claude-sonnet-4-6"
-    writing_model: str = "claude-sonnet-4-6"
+    classifier_model: str = "deepseek-chat"
+    planner_model: str = "deepseek-chat"
+    analysis_model: str = "deepseek-chat"
+    modeling_model: str = "deepseek-chat"
+    solving_model: str = "deepseek-chat"
+    verification_model: str = "deepseek-chat"
+    writing_model: str = "deepseek-chat"
     # 自由问答（纯对话，不走 LangGraph 流水线）
     chat_model: str = "deepseek-chat"
 
@@ -97,8 +97,8 @@ class Settings(BaseSettings):
         model_attr = f"{agent_role}_model"
         model = getattr(self, model_attr, self.analysis_model)
 
-        provider: Literal["anthropic", "openai"] = "anthropic"
-        api_key = self.anthropic_api_key
+        provider: Literal["anthropic", "openai"] = "openai"
+        api_key = self.openai_api_key
         base_url: Optional[str] = None
 
         if "claude" in model.lower():

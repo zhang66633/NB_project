@@ -1,3 +1,4 @@
+<!-- Knowledge page v2 — public access -->
 <template>
   <div class="h-full overflow-y-auto overflow-x-hidden bg-grid-paper">
     <div class="mx-auto max-w-4xl px-6 sm:px-10 py-12 sm:py-16 overflow-x-hidden">

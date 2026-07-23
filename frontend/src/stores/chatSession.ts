@@ -182,7 +182,7 @@ export const useChatSessionStore = defineStore(
       mode: SessionMode,
       sessionId: string,
       msgId: string,
-      patch: Partial<Pick<Message, "content" | "streaming">>,
+      patch: Partial<Pick<Message, "content" | "streaming">> & { answered?: boolean },
     ) {
       const list = getSessions(mode).value;
       const session = list.find((s) => s.id === sessionId);
@@ -191,6 +191,7 @@ export const useChatSessionStore = defineStore(
       if (!msg) return;
       if (patch.content !== undefined) msg.content = patch.content;
       if (patch.streaming !== undefined) msg.streaming = patch.streaming;
+      if (patch.answered !== undefined && "answered" in msg) (msg as any).answered = patch.answered;
       session.updatedAt = now();
     }
 

@@ -1,14 +1,17 @@
 """自由问答（纯对话）SSE 流式接口。
 
-不走 LangGraph 建模流水线，但支持 LLM 自主调用工具（KB 检索）：
+不走 LangGraph 建模流水线，但支持 LLM 自主调用工具（KB 检索 / 数学计算 / 交互）：
   - LLM 决定何时调用哪个工具
   - 后端执行工具后将结果回灌 LLM
-  - 全过程流式事件给前端（text delta / tool call / tool result）
+  - 全过程流式事件给前端（text delta / tool call / tool result / clarify）
 
 SSE 事件协议：
   data: {"delta": "..."}\n\n                 文本增量
   data: {"tool_call": {"name":"...","args":{...}}}\n\n    工具调用开始
   data: {"tool_result": {"name":"...","preview":"..."}}\n\n 工具执行完成（含结果摘要）
+  data: {"clarify": {"questions":[...]}}\n\n   LLM 需要用户澄清（前端渲染选项卡片）
+  data: {"code_exec": {"status":"running"}}\n\n 代码开始执行
+  data: {"code_exec": {"status":"done","stdout":"...","images":[...]}}\n\n 代码执行完成
   data: [DONE]\n\n                            全部结束
   data: {"error": "..."}\n\n                 错误
 """
@@ -25,6 +28,7 @@ from ..core.llm.factory import LLMFactory
 from ..core.prompts._shared import MARKDOWN_RULES, TEACH_SHARED_RULES
 from ..tools.kb_tools import create_kb_tools
 from ..tools.math_tools import create_math_tools
+from ..tools.interaction_tools import create_interaction_tools
 from ..auth import GitHubUser, get_current_user
 
 logger = logging.getLogger(__name__)
@@ -54,6 +58,10 @@ CHAT_SYSTEM_PROMPT = f"""# 数学建模助手
   - `get_analysis_template`：查找评价/解题框架模板
 - 不要凭空编造方法或论文，工具没有再据实回答"暂无相关资料"
 - 工具返回内容应**总结归纳**后给出，不要整段搬运
+- `ask_user`：当用户请求模糊（如只说"帮我建模"但没说问题类型/数据/目标）时调用，
+  提出 1-3 个关键问题各附 2-4 个选项。**问题已明确时不要调用**
+- `run_code`：需要数值验证、画函数图、跑仿真或复杂计算时调用，
+  代码须完整可运行，用 print() 输出关键结果
 
 {MARKDOWN_RULES}"""
 
@@ -77,6 +85,8 @@ TEACH_SYSTEM_PROMPT = f"""# 数学建模引导式导师
 - 鼓励学生自己查阅、自己思考，工具只用来确认你的引导方向是否正确
 - 可用工具: KB 检索（search_method_cards / search_similar_papers / get_analysis_template）
   与数学计算（sympy_compute / solve_optimization）—— 数学工具仅在需要确认某公式/数值时调用
+- `ask_user`：学生描述模糊、无法判断引导方向时调用，提出 1-2 个关键问题让学生选择
+- `run_code`：需要数值验证或画图辅助讲解时调用，执行后引导学生理解输出结果
 
 {MARKDOWN_RULES}"""
 
@@ -112,8 +122,8 @@ async def _event_stream(req: ChatRequest, api_key_config: dict | None = None):
     """SSE 生成器：流式输出 LLM 增量，并在 LLM 调用工具时通知前端。"""
     try:
         llm = LLMFactory.create("chat", api_key_config=api_key_config)
-        # 合并所有工具: KB 检索（方法/论文/模板） + 数学计算（SymPy/cvxpy）
-        tools = create_kb_tools() + create_math_tools()
+        # 合并所有工具: KB 检索 + 数学计算 + 交互（ask_user / run_code）
+        tools = create_kb_tools() + create_math_tools() + create_interaction_tools()
         tool_map = {t.name: t for t in tools}
         llm_with_tools = llm.bind_tools(tools)
 
@@ -147,6 +157,14 @@ async def _event_stream(req: ChatRequest, api_key_config: dict | None = None):
             if not tool_calls_final:
                 break
 
+            # ── 特殊处理: ask_user → 发 clarify 帧，结束本轮 ──
+            ask_calls = [tc for tc in tool_calls_final if tc.get("name") == "ask_user"]
+            if ask_calls:
+                questions = (ask_calls[0].get("args") or {}).get("questions", [])
+                yield f"data: {json.dumps({'clarify': {'questions': questions}}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
             # 通知前端：开始调用工具
             for tc in tool_calls_final:
                 yield f"data: {json.dumps({'tool_call': {'name': tc.get('name'), 'args': tc.get('args') or {}}}, ensure_ascii=False)}\n\n"
@@ -174,11 +192,20 @@ async def _event_stream(req: ChatRequest, api_key_config: dict | None = None):
                 if tool is None:
                     result_text = f"未知工具: {tool_name}"
                 else:
+                    # run_code 额外推送执行状态事件
+                    if tool_name == "run_code":
+                        yield f"data: {json.dumps({'code_exec': {'status': 'running'}}, ensure_ascii=False)}\n\n"
+
                     try:
                         result_text = tool.invoke(tool_args)
                     except Exception as e:  # noqa: BLE001
                         logger.exception("tool %s failed", tool_name)
                         result_text = f"工具执行失败: {e}"
+
+                    # run_code: 解析结果，推送 stdout + images
+                    if tool_name == "run_code":
+                        code_data = _parse_code_result(result_text)
+                        yield f"data: {json.dumps({'code_exec': {'status': 'done', **code_data}}, ensure_ascii=False)}\n\n"
 
                 # 通知前端：工具结果摘要
                 yield f"data: {json.dumps({'tool_result': {'name': tool_name, 'preview': _result_preview(result_text)}}, ensure_ascii=False)}\n\n"
@@ -203,6 +230,23 @@ async def _event_stream(req: ChatRequest, api_key_config: dict | None = None):
         elif "api_key" in err.lower() or "api key" in err.lower():
             err = f"API Key 错误: {err[:300]}"
         yield f"data: {json.dumps({'error': err}, ensure_ascii=False)}\n\n"
+
+
+def _parse_code_result(result_text: str) -> dict:
+    """从 RunCodeTool 的输出文本中提取 stdout 和 images。"""
+    stdout_parts = []
+    images: list[str] = []
+    for line in result_text.split("\n"):
+        if line.startswith("输出:"):
+            continue
+        if line.startswith("生成图表:"):
+            paths = line.replace("生成图表:", "").strip()
+            images = [p.strip() for p in paths.split(",") if p.strip()]
+        elif line.startswith("错误:"):
+            continue
+        else:
+            stdout_parts.append(line)
+    return {"stdout": "\n".join(stdout_parts).strip(), "images": images}
 
 
 @chat_router.post("/chat")

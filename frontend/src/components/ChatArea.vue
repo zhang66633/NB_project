@@ -85,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, nextTick, computed } from "vue";
+import { ref, watch, onMounted, onUnmounted, nextTick, computed, provide } from "vue";
 import { Brain, ArrowDown, Send, Loader2, Square } from "lucide-vue-next";
 import { useTaskStore } from "@/stores/task";
 import Bubble from "@/components/Bubble.vue";
@@ -112,6 +112,11 @@ const emit = defineEmits<{
   send: [text: string];
   cancel: [];
 }>();
+
+// 提供给 ClarifyCard 注入的发送函数（澄清选项确认后直接发送）
+provide("chatSendHandler", (text: string) => {
+  emit("send", text);
+});
 
 const taskStore = useTaskStore();
 

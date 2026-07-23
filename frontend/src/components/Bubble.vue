@@ -20,7 +20,11 @@
             <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">[{{ agentLabel }}]</span>
           </div>
 
-          <div v-if="isTool" class="space-y-1.5 min-w-[260px]">
+          <div v-if="isClarify && clarifyData" class="min-w-[280px]">
+            <ClarifyCard :questions="clarifyData" :answered="clarifyAnswered" />
+          </div>
+
+          <div v-else-if="isTool" class="space-y-1.5 min-w-[260px]">
             <div class="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
               <Wrench class="h-3 w-3" />
               <span>调用工具: {{ toolName }}</span>
@@ -112,7 +116,8 @@ import {
   Clipboard,
   ChevronRight,
 } from "lucide-vue-next";
-import type { Message, SystemMessage as SysMsg, AgentMessage, ToolMessage } from "@/types/response";
+import type { Message, SystemMessage as SysMsg, AgentMessage, ToolMessage, ClarifyMessage } from "@/types/response";
+import ClarifyCard from "@/components/ClarifyCard.vue";
 import { AgentType } from "@/types/enum";
 import { useTypewriter } from "@/composables/useTypewriter";
 
@@ -129,6 +134,20 @@ const isUser = computed(() => props.message.msg_type === "user");
 const isAgent = computed(() => props.message.msg_type === "agent");
 const isSystem = computed(() => props.message.msg_type === "system");
 const isTool = computed(() => props.message.msg_type === "tool");
+const isClarify = computed(() => props.message.msg_type === "clarify");
+
+const clarifyData = computed(() => {
+  if (!isClarify.value || !props.message.content) return null;
+  try {
+    return JSON.parse(props.message.content);
+  } catch {
+    return null;
+  }
+});
+const clarifyAnswered = computed(() => {
+  if (!isClarify.value) return false;
+  return (props.message as ClarifyMessage).answered ?? false;
+});
 
 const content = computed(() => props.message.content ?? "");
 
@@ -187,6 +206,7 @@ const avatarLetter = computed(() => {
   if (isAgent.value) return "A";
   if (isSystem.value) return "S";
   if (isTool.value) return "T";
+  if (isClarify.value) return "?";
   return "A";
 });
 

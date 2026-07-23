@@ -91,6 +91,41 @@ export function useStreamChat(sessionMode: SessionMode, chatMode: "chat" | "teac
           }
         }
       },
+      onClarify(event) {
+        // 确保前面的文本 delta 已写入 agent 消息
+        if (acc) ensureAgentMsg();
+        // 创建 clarify 卡片消息
+        const clarifyMsg: Message = {
+          id: generateId(),
+          msg_type: "clarify",
+          content: JSON.stringify(event.questions),
+          answered: false,
+          created_at: new Date().toISOString(),
+        } as any;
+        chatSession.addMessage(sessionMode, sessionId, clarifyMsg);
+      },
+      onCodeExec(event) {
+        // 更新最近一条 run_code 工具消息的 output
+        const msgs = chatSession.getActiveMessages(sessionMode).value;
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          const m = msgs[i];
+          if (m.msg_type === "tool" && (m as any).tool_name === "run_code") {
+            if (event.status === "running") {
+              chatSession.updateMessage(sessionMode, sessionId, m.id, {
+                output: [{ name: "run_code", preview: "代码执行中…" }],
+              } as any);
+            } else if (event.status === "done") {
+              const parts = [];
+              if (event.stdout) parts.push(`输出:\n${event.stdout}`);
+              if (event.images?.length) parts.push(`图表: ${event.images.length} 张`);
+              chatSession.updateMessage(sessionMode, sessionId, m.id, {
+                output: [{ name: "run_code", preview: parts.join("\n") || "执行完成" }],
+              } as any);
+            }
+            break;
+          }
+        }
+      },
       onDone() {
         const id = ensureAgentMsg();
         chatSession.updateMessage(sessionMode, sessionId, id, {

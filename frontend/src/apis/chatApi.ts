@@ -18,6 +18,20 @@ export interface ToolResultEvent {
   preview: string;
 }
 
+export interface ClarifyEvent {
+  questions: Array<{
+    question: string;
+    options: Array<{ label: string; description?: string }>;
+    multiSelect?: boolean;
+  }>;
+}
+
+export interface CodeExecEvent {
+  status: "running" | "done";
+  stdout?: string;
+  images?: string[];
+}
+
 export interface StreamChatOptions {
   /** 每次收到增量文本时回调 */
   onDelta: (delta: string) => void;
@@ -25,6 +39,10 @@ export interface StreamChatOptions {
   onToolCall?: (event: ToolCallEvent) => void;
   /** 工具执行完成时回调（含结果预览） */
   onToolResult?: (event: ToolResultEvent) => void;
+  /** LLM 需要用户澄清时回调（前端渲染选项卡片） */
+  onClarify?: (event: ClarifyEvent) => void;
+  /** 代码执行状态变化回调 */
+  onCodeExec?: (event: CodeExecEvent) => void;
   /** 流正常结束回调 */
   onDone?: () => void;
   /** 出错回调（网络错误或服务端 error 帧） */
@@ -46,7 +64,7 @@ export async function streamChat(
   messages: ChatHistoryMessage[],
   opts: StreamChatOptions,
 ): Promise<void> {
-  const { onDelta, onToolCall, onToolResult, onDone, onError, signal, useRag = false, mode = "chat" } = opts;
+  const { onDelta, onToolCall, onToolResult, onClarify, onCodeExec, onDone, onError, signal, useRag = false, mode = "chat" } = opts;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -117,6 +135,12 @@ export async function streamChat(
           }
           if (obj.tool_result) {
             onToolResult?.(obj.tool_result);
+          }
+          if (obj.clarify) {
+            onClarify?.(obj.clarify);
+          }
+          if (obj.code_exec) {
+            onCodeExec?.(obj.code_exec);
           }
         } catch {
           // 非 JSON 帧，忽略

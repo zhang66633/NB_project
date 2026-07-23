@@ -66,8 +66,12 @@ const taskStore = useTaskStore();
 
 const rightPanelOpen = ref(true);
 
-// 当前 solution 会话关联的后端 task_id（页面内局部状态）
-const currentTaskId = ref<string | null>(null);
+// 关联的 task_id 放到 taskStore（持久化），避免切页后丢失导致进度/结果不渲染。
+// 见 stores/task.ts 的 solutionTaskId 字段。
+const currentTaskId = computed({
+  get: () => taskStore.solutionTaskId,
+  set: (v: string | null) => { taskStore.solutionTaskId = v; },
+});
 const cancelling = ref(false);
 
 const stepDefs: ProgressStep[] = [
@@ -202,10 +206,17 @@ onMounted(() => {
   if (!chatSession.activeSolutionId && chatSession.sortedSolutionSessions.length > 0) {
     chatSession.switchSession("solution", chatSession.sortedSolutionSessions[0].id);
   }
+  // 切回 solution 页时：connectWebSocket 内部有短路逻辑
+  // - 已连到目标 task → 直接复用
+  // - 断开 / 连接到别的 task → 重连
+  // 这样切页回来不会卡"思考中"，也不会重复打开 WS 把进度搞丢。
+  if (taskStore.solutionTaskId && !taskStore.completed) {
+    taskStore.connectWebSocket(taskStore.solutionTaskId);
+  }
 });
 
-// 注意：故意不在 onUnmounted 关闭 WS，避免切页导致任务进度丢失。
-// WS 由 taskStore 持有，task_end 后会保持连接直到用户切换任务/显式关闭。
+// 注意：故意不在 onUnmounted 关闭 WS / 清空 task_id，避免切页导致任务进度丢失。
+// WS 与 solutionTaskId 都由 taskStore 持有，task_end 事件会清运行态。
 onBeforeUnmount(() => {});
 </script>
 

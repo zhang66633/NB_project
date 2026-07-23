@@ -148,6 +148,25 @@ watch(content, (val) => {
   rawText.value = val;
 }, { immediate: true });
 
+/** 修复「切页回来重新流式输出」。
+ *
+ * useTypewriter 的 watch(text, immediate=true) 在每次组件 mount 时都会跑一遍
+ * startTyping；如果 enabled=true（且 content 非空），displayText 会被清空然后
+ * 从头打字 — 切到其它页面再切回时用户看到的是「再流式输出一遍」。
+ *
+ * 行为契约: 组件 mount 时 content.value 就是 store 里的当前文本。
+ *   - 若 streaming=true/false（消息已被流式渲染过）：displayText 应直接 = content，不要 typewriter
+ *   - 若消息是真正「一次性外部消息」且刚 push 进来：typewriter 才会启动
+ *
+ * 判定: useTypewriter 自身的 watch 跑过 startTyping 之后，如果 content 已等于 displayText
+ * 就什么都不做；否则强制 displayText = content.value 同步一次。
+ */
+onMounted(() => {
+  if (!content.value) return;
+  displayText.value = content.value;
+  isTyping.value = false;
+});
+
 const agentLabel = computed(() => {
   if (!isAgent.value) return "";
   const agentType = (props.message as AgentMessage).agent_type;

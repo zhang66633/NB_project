@@ -11,6 +11,8 @@ export const useTaskStore = defineStore("task", () => {
   // 每个 task 的进度/结果消息（system 进度 + agent 最终答案）
   const messagesByTask = ref<Record<string, Message[]>>({});
   const currentTaskId = ref<string | null>(null);
+  // solution 页关联的后端 task_id（持久化，避免切页后丢失 → 进度消息不再渲染）
+  const solutionTaskId = ref<string | null>(null);
   let ws: TaskWebSocket | null = null;
   const wsStatus = ref<"connecting" | "connected" | "disconnected" | "reconnecting">("disconnected");
   const isRunning = ref(false);
@@ -131,6 +133,14 @@ export const useTaskStore = defineStore("task", () => {
   }
 
   function connectWebSocket(taskId: string) {
+    // 短路：若已连到同一任务且连接正常，复用避免切页回来时断开/重连把进度搞丢
+    if (
+      ws &&
+      currentTaskId.value === taskId &&
+      wsStatus.value === "connected"
+    ) {
+      return;
+    }
     if (ws) { ws.close(); ws = null; }
     setCurrentTask(taskId);
     ensureTaskBucket(taskId);
@@ -156,6 +166,7 @@ export const useTaskStore = defineStore("task", () => {
 
   return {
     messages, wsStatus, isRunning, completed, currentStep, currentTaskId,
+    solutionTaskId,
     connectWebSocket, closeWebSocket, setCurrentTask, appendMessage,
   };
 });

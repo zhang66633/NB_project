@@ -184,6 +184,7 @@ def _get_retriever():
     return HybridRetriever(
         kb_root=settings.kb_root,
         persist_dir=settings.chroma_dir,
+        embedding_provider=settings.kb_embedding_provider,
     )
 
 

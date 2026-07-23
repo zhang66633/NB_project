@@ -20,7 +20,7 @@
             <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">[{{ agentLabel }}]</span>
           </div>
 
-          <div v-if="isTool" class="space-y-1">
+          <div v-if="isTool" class="space-y-1.5 min-w-[260px]">
             <div class="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
               <Wrench class="h-3 w-3" />
               <span>调用工具: {{ toolName }}</span>
@@ -28,6 +28,15 @@
             <div v-if="toolInput" class="text-xs text-muted-foreground font-mono bg-muted/40 rounded p-1.5 overflow-x-auto border border-border">
               {{ formatToolInput(toolInput) }}
             </div>
+            <details v-if="toolOutput" class="text-xs">
+              <summary class="cursor-pointer text-muted-foreground hover:text-foreground select-none flex items-center gap-1">
+                <ChevronRight class="h-3 w-3 transition-transform" :class="{ 'rotate-90': toolOutputOpen }" />
+                <span class="font-mono text-[10px] uppercase tracking-wider">{{ toolOutputOpen ? "收起结果" : "查看结果" }}</span>
+              </summary>
+              <div class="mt-1.5 font-mono bg-muted/40 rounded p-2 border border-border max-h-60 overflow-y-auto whitespace-pre-wrap break-all">
+                {{ toolOutputText }}
+              </div>
+            </details>
           </div>
 
           <div v-else-if="isSystem" class="flex items-center gap-2">
@@ -138,6 +147,23 @@ const toolName = computed(() => {
 const toolInput = computed(() => {
   if (!isTool.value) return null;
   return (props.message as ToolMessage).input;
+});
+
+const toolOutput = computed(() => {
+  if (!isTool.value) return null;
+  return (props.message as ToolMessage).output;
+});
+
+const toolOutputOpen = ref(false);
+
+const toolOutputText = computed(() => {
+  const out = toolOutput.value;
+  if (!out) return "";
+  try {
+    return JSON.stringify(out, null, 2).slice(0, 2000);
+  } catch {
+    return String(out);
+  }
 });
 
 const sysIcon = computed(() => {

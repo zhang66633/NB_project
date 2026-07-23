@@ -8,9 +8,23 @@ export interface ChatHistoryMessage {
   content: string;
 }
 
+export interface ToolCallEvent {
+  name: string;
+  args: Record<string, unknown>;
+}
+
+export interface ToolResultEvent {
+  name: string;
+  preview: string;
+}
+
 export interface StreamChatOptions {
   /** 每次收到增量文本时回调 */
   onDelta: (delta: string) => void;
+  /** LLM 决定调用某个工具时回调（args 已完整） */
+  onToolCall?: (event: ToolCallEvent) => void;
+  /** 工具执行完成时回调（含结果预览） */
+  onToolResult?: (event: ToolResultEvent) => void;
   /** 流正常结束回调 */
   onDone?: () => void;
   /** 出错回调（网络错误或服务端 error 帧） */
@@ -25,7 +39,6 @@ export interface StreamChatOptions {
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
 function getToken(): string | null {
-  // 与 utils/request.ts 保持一致的 token 读取（localStorage）
   return (
     localStorage.getItem("mma-token") ||
     localStorage.getItem("token") ||
@@ -33,15 +46,11 @@ function getToken(): string | null {
   );
 }
 
-/**
- * 发起 SSE 流式对话。
- * @param messages 完整对话历史（含本次用户最新消息）
- */
 export async function streamChat(
   messages: ChatHistoryMessage[],
   opts: StreamChatOptions,
 ): Promise<void> {
-  const { onDelta, onDone, onError, signal, useRag = false, mode = "chat" } = opts;
+  const { onDelta, onToolCall, onToolResult, onDone, onError, signal, useRag = false, mode = "chat" } = opts;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -85,9 +94,8 @@ export async function streamChat(
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
-      // SSE 按 \n\n 分帧
       const frames = buffer.split("\n\n");
-      buffer = frames.pop() ?? ""; // 最后一段可能不完整，留待下次
+      buffer = frames.pop() ?? "";
 
       for (const frame of frames) {
         const line = frame.trim();
@@ -107,6 +115,12 @@ export async function streamChat(
           }
           if (obj.delta) {
             onDelta(obj.delta);
+          }
+          if (obj.tool_call) {
+            onToolCall?.(obj.tool_call);
+          }
+          if (obj.tool_result) {
+            onToolResult?.(obj.tool_result);
           }
         } catch {
           // 非 JSON 帧，忽略

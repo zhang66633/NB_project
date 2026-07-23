@@ -1,12 +1,16 @@
 """自由问答（纯对话）SSE 流式接口。
 
-不走 LangGraph 建模流水线，不挂 RAG（预留开关），
-直接调用 chat 角色 LLM 逐 token 推送，保证响应快。
+不走 LangGraph 建模流水线，但支持 LLM 自主调用工具（KB 检索）：
+  - LLM 决定何时调用哪个工具
+  - 后端执行工具后将结果回灌 LLM
+  - 全过程流式事件给前端（text delta / tool call / tool result）
 
-协议（text/event-stream）：
-  - 每个增量:  data: {"delta": "..."}\n\n
-  - 完成:      data: [DONE]\n\n
-  - 错误:      data: {"error": "..."}\n\n 然后结束
+SSE 事件协议：
+  data: {"delta": "..."}\n\n                 文本增量
+  data: {"tool_call": {"name":"...","args":{...}}}\n\n    工具调用开始
+  data: {"tool_result": {"name":"...","preview":"..."}}\n\n 工具执行完成（含结果摘要）
+  data: [DONE]\n\n                            全部结束
+  data: {"error": "..."}\n\n                 错误
 """
 
 import json
@@ -14,11 +18,12 @@ import logging
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from .schemas.request import ChatRequest
 from ..core.llm.factory import LLMFactory
 from ..core.prompts._shared import MARKDOWN_RULES, TEACH_SHARED_RULES
+from ..tools.kb_tools import create_kb_tools
 from ..auth import GitHubUser, get_current_user
 
 logger = logging.getLogger(__name__)
@@ -26,8 +31,9 @@ logger = logging.getLogger(__name__)
 chat_router = APIRouter()
 
 # 滑动窗口：保留最近 N 条消息（不含 system），防止多轮后 token 膨胀。
-# 后续可在此之上做「窗口外历史 LLM 摘要压缩」，接口不变。
 MAX_HISTORY_MESSAGES = 20
+# 单次对话最多工具调用轮数，防止无限循环
+MAX_TOOL_ITERATIONS = 3
 
 CHAT_SYSTEM_PROMPT = f"""# 数学建模助手
 
@@ -39,6 +45,14 @@ CHAT_SYSTEM_PROMPT = f"""# 数学建模助手
 - 对概念性问题给出准确定义与直觉解释
 - 对方法类问题给出适用场景、步骤与优缺点
 - 涉及代码时给出简洁可运行的示例
+
+## 工具使用规则
+- 当用户问到具体方法（如线性规划、PSO、SVM）或真实案例时，**优先调用工具**：
+  - `search_method_cards`：查找方法的原理、公式、适用场景
+  - `search_similar_papers`：查找竞赛真题与优秀论文示例
+  - `get_analysis_template`：查找评价/解题框架模板
+- 不要凭空编造方法或论文，工具没有再据实回答"暂无相关资料"
+- 工具返回内容应**总结归纳**后给出，不要整段搬运
 
 {MARKDOWN_RULES}"""
 
@@ -55,6 +69,11 @@ TEACH_SYSTEM_PROMPT = f"""# 数学建模引导式导师
 3. 约束条件：现实中受到哪些限制？
 4. 目标函数：如何用数学表达式描述目标？
 5. 模型与方法：哪类模型适合？为什么？
+
+## 工具使用规则
+- 你**也可以**调用工具查找参考资料，但**不应把工具结果直接给到学生**
+- 用工具查询后，把**关键信息转成引导性问题**问学生
+- 鼓励学生自己查阅、自己思考，工具只用来确认你的引导方向是否正确
 
 {MARKDOWN_RULES}"""
 
@@ -77,34 +96,105 @@ def _to_lc_messages(req: ChatRequest) -> list:
     return msgs
 
 
+def _result_preview(content: str, max_chars: int = 200) -> str:
+    """给前端预览用的摘要（避免推送几 KB 的结果）。"""
+    if not content:
+        return ""
+    if len(content) <= max_chars:
+        return content
+    return content[:max_chars] + f"…(+{len(content) - max_chars} 字符)"
+
+
 async def _event_stream(req: ChatRequest, api_key_config: dict | None = None):
-    """SSE 生成器：流式输出 LLM 增量。"""
+    """SSE 生成器：流式输出 LLM 增量，并在 LLM 调用工具时通知前端。"""
     try:
         llm = LLMFactory.create("chat", api_key_config=api_key_config)
+        tools = create_kb_tools()
+        tool_map = {t.name: t for t in tools}
+        llm_with_tools = llm.bind_tools(tools)
+
         messages = _to_lc_messages(req)
 
-        # 预留 RAG：当前直通。后续在此检索 kb_search 并把结果注入 system context。
-        if req.use_rag:
-            logger.info("use_rag=True 暂未实现，按纯对话处理")
+        # 循环：每轮 LLM 输出可能含文本 + tool_calls；若有 tool_calls 则执行后回灌
+        for _ in range(MAX_TOOL_ITERATIONS):
+            text_buf: list[str] = []
+            tool_calls_pending: list[dict] = []
 
-        async for chunk in llm.astream(messages):
-            delta = chunk.content
-            if not delta:
-                continue
-            if isinstance(delta, list):  # 某些 provider 返回分段
-                delta = "".join(
-                    part.get("text", "") if isinstance(part, dict) else str(part)
-                    for part in delta
+            async for chunk in llm_with_tools.astream(messages):
+                # 文本增量
+                delta = getattr(chunk, "content", None)
+                if delta:
+                    if isinstance(delta, list):
+                        delta = "".join(
+                            part.get("text", "") if isinstance(part, dict) else str(part)
+                            for part in delta
+                        )
+                    if delta:
+                        text_buf.append(delta)
+                        yield f"data: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n"
+
+                # 工具调用（一般在最后一个 chunk 一次性给出完整 args）
+                tc_list = getattr(chunk, "tool_call_chunks", None) or getattr(chunk, "tool_calls", None)
+                if tc_list:
+                    # tool_call_chunks 增量累加；tool_calls 是已结构化的完整调用
+                    # 我们以最终合并的 tool_calls 为准
+                    for tc in tc_list:
+                        if isinstance(tc, dict) and tc.get("name") and tc not in tool_calls_pending:
+                            tool_calls_pending.append(tc)
+
+            # 没有工具调用 → 这一轮是纯文本回答，跳出循环
+            if not tool_calls_pending:
+                break
+
+            # 通知前端：开始调用工具
+            for tc in tool_calls_pending:
+                yield f"data: {json.dumps({'tool_call': {'name': tc.get('name'), 'args': tc.get('args') or {}}}, ensure_ascii=False)}\n\n"
+
+            # 把 LLM 的 tool_calls 写回消息历史（AIMessage with tool_calls）
+            messages.append(
+                AIMessage(
+                    content="".join(text_buf),
+                    tool_calls=[
+                        {
+                            "id": tc.get("id") or tc.get("tool_call_id"),
+                            "name": tc.get("name"),
+                            "args": tc.get("args") or {},
+                        }
+                        for tc in tool_calls_pending
+                    ],
                 )
-            if delta:
-                yield f"data: {json.dumps({'delta': delta}, ensure_ascii=False)}\n\n"
+            )
+
+            # 执行每个工具
+            for tc in tool_calls_pending:
+                tool_name = tc.get("name")
+                tool_args = tc.get("args") or {}
+                tool = tool_map.get(tool_name)
+                if tool is None:
+                    result_text = f"未知工具: {tool_name}"
+                else:
+                    try:
+                        result_text = tool.invoke(tool_args)
+                    except Exception as e:  # noqa: BLE001
+                        logger.exception("tool %s failed", tool_name)
+                        result_text = f"工具执行失败: {e}"
+
+                # 通知前端：工具结果摘要
+                yield f"data: {json.dumps({'tool_result': {'name': tool_name, 'preview': _result_preview(result_text)}}, ensure_ascii=False)}\n\n"
+
+                # 把结果写回历史，供下一轮 LLM 使用
+                messages.append(
+                    ToolMessage(
+                        content=result_text,
+                        tool_call_id=tc.get("id") or tc.get("tool_call_id") or tool_name,
+                    )
+                )
 
         yield "data: [DONE]\n\n"
 
     except Exception as e:  # noqa: BLE001
         logger.exception("chat stream failed")
         err = str(e)
-        # 给出更友好的错误提示
         if "incorrect api key" in err.lower() or "invalid api key" in err.lower():
             err = "API Key 无效，请在首页重新配置你的 Key"
         elif "401" in err or "403" in err:
@@ -116,8 +206,7 @@ async def _event_stream(req: ChatRequest, api_key_config: dict | None = None):
 
 @chat_router.post("/chat")
 async def chat(req: ChatRequest, user: GitHubUser | None = Depends(get_current_user)):
-    """自由问答 SSE 流式接口。"""
-    # 检查是否有可用的 API Key
+    """自由问答 SSE 流式接口（支持 LLM 工具调用）。"""
     from .apikeys import get_active_api_key, _resolve_user_id
     uid = _resolve_user_id(user=user)
     active_key = get_active_api_key(uid)
@@ -137,6 +226,6 @@ async def chat(req: ChatRequest, user: GitHubUser | None = Depends(get_current_u
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # 关闭 nginx 缓冲，保证实时性
+            "X-Accel-Buffering": "no",
         },
     )

@@ -1,7 +1,7 @@
 /** 流式对话组合式函数 — /chat 与 /teach 页共用。
  *
  * 负责：会话创建/复用、用户消息与 agent 占位消息写入、
- * 调 SSE 接口并流式就地累加、运行态管理、最新会话恢复。
+ * 调 SSE 接口并流式就地累加、工具调用可视化、运行态管理、最新会话恢复。
  */
 import { useChatSessionStore, type SessionMode } from "@/stores/chatSession";
 import { streamChat, type ChatHistoryMessage } from "@/apis/chatApi";
@@ -39,7 +39,7 @@ export function useStreamChat(sessionMode: SessionMode, chatMode: "chat" | "teac
     };
     chatSession.addMessage(sessionMode, sessionId, userMsg);
 
-    // 占位一条 agent 空消息，后续流式就地累加（streaming 标记跳过打字机重放）
+    // 占位一条 agent 空消息，后续流式就地累加
     const agentMsg: Message = {
       id: generateId(),
       msg_type: "agent",
@@ -57,6 +57,39 @@ export function useStreamChat(sessionMode: SessionMode, chatMode: "chat" | "teac
       onDelta(delta) {
         acc += delta;
         chatSession.updateMessage(sessionMode, sessionId, agentMsg.id, { content: acc });
+      },
+      onToolCall(event) {
+        // 在 agent 回答前插入一条工具调用消息，便于前端可视化
+        const toolMsg: Message = {
+          id: generateId(),
+          msg_type: "tool",
+          tool_name: event.name,
+          input: event.args,
+          output: null,
+          created_at: new Date().toISOString(),
+        };
+        // 把工具消息插在 agent 占位消息之前
+        const msgs = chatSession.getActiveMessages(sessionMode).value;
+        const idx = msgs.findIndex((m) => m.id === agentMsg.id);
+        if (idx >= 0) {
+          chatSession.activeChatSessions[0]; // no-op for type
+          // 直接通过 store 内部方法插入更优雅，但目前接口只有 push/append；
+          // 这里改为把工具消息 append 在 agent 之后，agent 仍是"回答"，工具在它上方
+        }
+        chatSession.addMessage(sessionMode, sessionId, toolMsg);
+      },
+      onToolResult(event) {
+        // 找到最近一条同名 tool 消息，更新其 output
+        const msgs = chatSession.getActiveMessages(sessionMode).value;
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          const m = msgs[i];
+          if (m.msg_type === "tool" && (m as any).tool_name === event.name && !(m as any).output) {
+            chatSession.updateMessage(sessionMode, sessionId, m.id, {
+              output: [{ name: event.name, preview: event.preview }],
+            } as any);
+            break;
+          }
+        }
       },
       onDone() {
         chatSession.updateMessage(sessionMode, sessionId, agentMsg.id, {

@@ -326,7 +326,8 @@
     <Dialog :open="editOpen" @update:open="editOpen = $event">
       <DialogContent class="max-w-3xl max-h-[88vh] overflow-y-auto">
         <DialogHeader><DialogTitle class="font-display">编辑{{ mgrTypeLabel }}</DialogTitle></DialogHeader>
-        <div class="space-y-4 text-sm py-2">
+        <div v-if="editLoading" class="flex items-center justify-center py-16"><Loader2 class="h-5 w-5 animate-spin text-muted-foreground" /></div>
+        <div v-else class="space-y-4 text-sm py-2">
 
           <!-- ===== 方法卡片 ===== -->
           <template v-if="mgrType === 'method'">
@@ -555,9 +556,24 @@ async function loadMgrList() {
 watch(mgrType, () => loadMgrList());
 
 // Edit
-const editOpen = ref(false); const editSaving = ref(false); const editForm = ref<Record<string, any>>({});
-function openEdit(e: any) {
-  const t: any = { ...e };
+const editOpen = ref(false); const editSaving = ref(false); const editLoading = ref(false); const editForm = ref<Record<string, any>>({});
+async function openEdit(e: any) {
+  editLoading.value = true;
+  editOpen.value = true;
+  editForm.value = { ...e };
+  try {
+    let detail: any = null;
+    if (mgrType.value === "method") detail = (await getMethod(e.id)).data;
+    else if (mgrType.value === "paper") detail = (await getPaper(e.id)).data;
+    else if (mgrType.value === "template") detail = (await getTemplate(e.id)).data;
+    else if (mgrType.value === "problem") detail = (await getProblem(e.id)).data;
+    if (detail) editForm.value = { ...e, ...detail };
+  } catch (err: any) {
+    console.error("Failed to load detail:", err);
+  } finally {
+    editLoading.value = false;
+  }
+  const t: any = { ...editForm.value };
   if (mgrType.value === "method") {
     t.category = Array.isArray(t.category) ? [...t.category] : [];
     t.applicable_when = Array.isArray(t.applicable_when) ? [...t.applicable_when] : [];
@@ -567,12 +583,13 @@ function openEdit(e: any) {
     t.code_snippets = Array.isArray(t.code_snippets) ? t.code_snippets.map((c:any) => ({...c})) : [];
     t.formulas = Array.isArray(t.formulas) ? t.formulas.map((f:any) => ({...f})) : [];
     t.related_cards = Array.isArray(t.related_cards) ? [...t.related_cards] : [];
+    t.related_papers = Array.isArray(t.related_papers) ? [...t.related_papers] : [];
   }
   if (mgrType.value === "paper") {
     const ana: any = t.analysis || {};
     t.analysis_problem_summary = ana.problem_summary || "";
     t.analysis_key_assumptions = Array.isArray(ana.key_assumptions) ? [...ana.key_assumptions] : [];
-    t.analysis_decision_variables = Array.isArray(ana.decision_variables) ? [...ana.decision_variables] : [];
+    t.analysis_decision_variables = ana.decision_variables || "";
     t.analysis_objective = ana.objective || "";
     t.analysis_constraints = ana.constraints || "";
     const mdl: any = t.model || {};
@@ -587,6 +604,12 @@ function openEdit(e: any) {
     t.tags_problem_type = Array.isArray(tags.problem_type) ? [...tags.problem_type] : [];
     t.tags_core_models = Array.isArray(tags.core_models) ? [...tags.core_models] : [];
     t.methodology_chain = Array.isArray(t.methodology_chain) ? [...t.methodology_chain] : [];
+    t.problem_context = t.problem_context || "";
+    t.key_formulas = Array.isArray(t.key_formulas) ? t.key_formulas.map((f:any) => ({...f})) : [];
+    t.algorithm_outline = Array.isArray(t.algorithm_outline) ? t.algorithm_outline.map((a:any) => ({...a})) : [];
+    t.assumption_analysis = Array.isArray(t.assumption_analysis) ? [...t.assumption_analysis] : [];
+    t.reusable_patterns = Array.isArray(t.reusable_patterns) ? [...t.reusable_patterns] : [];
+    t.common_pitfalls = Array.isArray(t.common_pitfalls) ? t.common_pitfalls.map((p:any) => ({...p})) : [];
   }
   if (mgrType.value === "template") {
     t.steps = Array.isArray(t.steps) ? t.steps.map((s:any) => ({...s})) : [];
@@ -599,7 +622,6 @@ function openEdit(e: any) {
     t.deliverables = Array.isArray(t.deliverables) ? [...t.deliverables] : [];
   }
   editForm.value = t;
-  editOpen.value = true;
 }
 async function doEditSave() {
   editSaving.value = true;

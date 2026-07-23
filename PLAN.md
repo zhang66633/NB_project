@@ -1,7 +1,7 @@
 # 数学建模多智能体系统 — 实施计划
 
 > ⚠️ **蓝图说明**：`ARCHITECTURE.md` 为早期废弃方案（Next.js + MUI），**一律不作参考**，以本文档为准。
-> 版本: v0.3 | 日期: 2026-07-23 | 项目目录: `math_agent/`（原 NB_project 已并入，GitHub 远程 `zhang66633/NB_project`）
+> 版本: v0.4 | 日期: 2026-07-23 | 项目目录: `math_agent/`（原 NB_project 已并入，GitHub 远程 `zhang66633/NB_project`）
 >
 > ### 📌 当前进度对齐（2026-07-23 审查快照）
 > | 维度 | 状态 | 说明 |
@@ -14,6 +14,7 @@
 > | 前端页面 / API | ✅ 完成 | Chat / Teach / Solution / Knowledge / APIKeys / Settings / Login |
 > | 认证 / 密钥管理 | ✅ 完成 | GitHub OAuth + `pages/apikeys` + `/api/apikeys`（支持多服务商） |
 > | 自由问答 SSE | ✅ 完成 | `/api/chat` 流式输出，支持 chat/teach 双模式 |
+> | **LLM 工具调用** | ✅ 完成 | chat/teach LLM 主动调用 KB 检索 + 数学计算（SymPy + cvxpy LP/QP/IP/SOCP） |
 > | **端到端联调** | ✅ 完成 | REST + WS + SSE 全部打通；任务 `659fbc6a` 全链路验证（9 节点全部执行），输出完整 LaTeX 论文 |
 
 ---
@@ -90,9 +91,10 @@ math_agent/
 │   │   │   ├── agents/              # 5 个子智能体实现
 │   │   │   ├── prompts/             # Prompt 模板（按 agent 分文件）
 │   │   │   └── llm/                 # LLM 工厂 + 多提供商支持
-│   │   ├── tools/                   # LangChain Tool 定义
+│   │   ├── tools/                   # LangChain Tool 定义（LLM bind_tools）
 │   │   │   ├── __init__.py
-│   │   │   └── kb_tools.py          # 知识库搜索 Tool 封装
+│   │   │   ├── kb_tools.py          # 知识库搜索: search_method_cards / search_similar_papers / get_analysis_template
+│   │   │   └── math_tools.py        # 数学计算: sympy_compute (SymPy) / solve_optimization (cvxpy LP/QP/IP/SOCP)
 │   │   ├── knowledge/               # 知识库子系统
 │   │   │   ├── __init__.py
 │   │   │   ├── schemas.py           # Pydantic 数据模型
@@ -291,7 +293,7 @@ START → classify_problem → retrieve_knowledge → plan_execution
 | `GET` | `/api/knowledge/stats` | 知识库统计 |
 | `POST` | `/api/knowledge/reindex` | 触发重新索引 |
 | `GET` | `/api/health` | 服务健康检查 |
-| `POST` | `/api/chat` | SSE 流式对话 (chat/teach 模式) |
+| `POST` | `/api/chat` | SSE 流式对话 (chat/teach 模式，含 LLM 工具调用：KB 检索 + 数学计算) |
 
 ### WebSocket
 
@@ -394,6 +396,24 @@ START → classify_problem → retrieve_knowledge → plan_execution
 3. 性能优化（LLM 缓存、并行检索）
 4. Docker 沙箱升级
 5. 测试覆盖
+6. **工具集扩充**：数学计算 ✅（SymPy + cvxpy）；候选 P1 — 数据获取（WorldBank/FRED）/ 网络检索（firecrawl MCP）/ 数值仿真（ODE/PDE 求解器）
+
+### P0 数学计算工具（2026-07-23 上线）
+
+为补足 LLM 在精确符号与数值计算上的短板，新增两个 LangChain BaseTool，chat/teach 模式通过 `llm.bind_tools()` 自动挂载：
+
+| 工具 | 输入 | 输出 | 适用 |
+|------|------|------|------|
+| `sympy_compute` | expression / operation / variable / extra | LaTeX + 文本双形式结果 | 求导、积分（不定/定）、代数/ODE 求解、极限、泰勒展开、化简、因式分解、展开、矩阵特征值 |
+| `solve_optimization` | problem_type (LP/QP/IP/SOCP) / sense / objective / variables / constraints | 状态、最优值、每变量数值 | 资源分配、运输问题、投资组合、排产调度、整数规划(MIP) |
+
+**关键设计**：
+1. **结构化输入**（Pydantic schema）— LLM 不会被 Python 语法坑（变量声明、import、循环）
+2. **错误友好** — 任何解析/求解异常被捕获，转可读消息回灌给 LLM，让 LLM 自我修正
+3. **SymPy → cvxpy 桥接** — `_sympy_to_cvxpy()` 把 LLM 写的数学表达式自动转 cvxpy，LLM 不必懂 cvxpy API
+4. **IP 求解器自适应** — cvxpy 1.5+ 内置 SCIPY(HiGHS)；优先级 SCIPY → ECOS_BB → SCIP → SCS；缺求解器时给出明确 pip 安装指引
+
+**P0 不做 MCP**：math_agent 作为 MCP server 价值低（KB 检索已通过 LangChain Tool 暴露）；候选 MCP 客户端方向：`firecrawl-search` / `arxiv` / `fetch`（P1 阶段考虑）
 
 ---
 
@@ -703,6 +723,7 @@ analysis_agent → System Prompt 注入 KB 上下文 → 结构化分析输出
 |------|------|--------|------|------|
 | Step 1 | `retriever.py` 增强 (分数/MMR/过滤/关键词兜底) | ✅ 完成 | - | 无 |
 | Step 3 | `tools/kb_tools.py` LangChain Tool 封装 | ✅ 完成 | - | Step 1 |
+| Step 3b | `tools/math_tools.py` 数学计算 (SymPy + cvxpy) | ✅ 完成 | 2026-07-23 | Step 3 |
 | Step 4 | `chain.py` RAG Chain | 🟡 中 | 0.5d | Step 1 |
 | Step 5 | Prompt 模板 (RAG 上下文格式化) | 🟡 中 | 0.5d | Step 4 |
 | Step 2 | `reranker.py` LLM 重排序 | 🟡 中 | 0.5d | Step 1 |

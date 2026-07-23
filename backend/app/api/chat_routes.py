@@ -24,6 +24,7 @@ from .schemas.request import ChatRequest
 from ..core.llm.factory import LLMFactory
 from ..core.prompts._shared import MARKDOWN_RULES, TEACH_SHARED_RULES
 from ..tools.kb_tools import create_kb_tools
+from ..tools.math_tools import create_math_tools
 from ..auth import GitHubUser, get_current_user
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,8 @@ TEACH_SYSTEM_PROMPT = f"""# 数学建模引导式导师
 - 你**也可以**调用工具查找参考资料，但**不应把工具结果直接给到学生**
 - 用工具查询后，把**关键信息转成引导性问题**问学生
 - 鼓励学生自己查阅、自己思考，工具只用来确认你的引导方向是否正确
+- 可用工具: KB 检索（search_method_cards / search_similar_papers / get_analysis_template）
+  与数学计算（sympy_compute / solve_optimization）—— 数学工具仅在需要确认某公式/数值时调用
 
 {MARKDOWN_RULES}"""
 
@@ -109,7 +112,8 @@ async def _event_stream(req: ChatRequest, api_key_config: dict | None = None):
     """SSE 生成器：流式输出 LLM 增量，并在 LLM 调用工具时通知前端。"""
     try:
         llm = LLMFactory.create("chat", api_key_config=api_key_config)
-        tools = create_kb_tools()
+        # 合并所有工具: KB 检索（方法/论文/模板） + 数学计算（SymPy/cvxpy）
+        tools = create_kb_tools() + create_math_tools()
         tool_map = {t.name: t for t in tools}
         llm_with_tools = llm.bind_tools(tools)
 

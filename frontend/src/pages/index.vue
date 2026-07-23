@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-grid-paper min-h-full">
+  <div class="bg-grid-paper h-full overflow-y-auto">
     <!-- Access denied banner -->
     <div v-if="deniedMessage" class="mx-auto max-w-4xl px-6 sm:px-10 pt-4">
       <div class="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3">

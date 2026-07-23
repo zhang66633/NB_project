@@ -45,7 +45,7 @@
       </header>
 
       <!-- 内容区 -->
-      <main class="flex-1 overflow-y-auto overflow-x-hidden">
+      <main class="flex-1 overflow-hidden">
         <router-view />
       </main>
     </div>

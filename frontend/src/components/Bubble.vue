@@ -59,6 +59,12 @@
             @click="isTyping && skip()"
           />
 
+          <div v-else class="flex items-center gap-1.5 py-1">
+            <span class="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style="animation-delay: 0ms" />
+            <span class="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style="animation-delay: 150ms" />
+            <span class="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style="animation-delay: 300ms" />
+          </div>
+
           <div v-if="isFinalPaper" class="mt-2 flex items-center gap-2 border-t border-border pt-2">
             <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
               论文操作
@@ -79,12 +85,6 @@
               <Clipboard class="h-3 w-3" />
               <span>{{ copied ? "已复制" : "复制 Markdown" }}</span>
             </button>
-          </div>
-
-          <div v-else class="flex items-center gap-1.5 py-1">
-            <span class="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style="animation-delay: 0ms" />
-            <span class="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style="animation-delay: 150ms" />
-            <span class="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style="animation-delay: 300ms" />
           </div>
 
         </div>

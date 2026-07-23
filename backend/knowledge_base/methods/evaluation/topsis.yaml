@@ -34,4 +34,10 @@ method_card:
             d_worst = np.sqrt(((weighted - ideal_worst)**2).sum(axis=1))
             # 相对贴近度
             return d_worst / (d_best + d_worst)
-  related_cards: ["mc_008"]
+  related_cards: ["mc_008", "mc_013"]
+  difficulty: 2
+  quality_rating: 5
+  tags:
+    model_type: ["评价类"]
+    key_concepts: ["正负理想解", "贴近度", "归一化", "距离度量"]
+    mathematical_tools: ["矩阵运算", "欧氏距离"]

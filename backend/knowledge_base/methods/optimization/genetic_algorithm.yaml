@@ -29,4 +29,15 @@ method_card:
             strategy='best1bin', maxiter=1000, popsize=30
         )
         print(f"最优解: {result.x}, 最优值: {result.fun}")
-  related_cards: ["mc_004", "mc_005"]
+  formulas:
+    - "适应度: f_i = fitness(chromosome_i)，目标函数越高(大)→适应度越高"
+    - "轮盘赌选择概率: P_i = f_i / Σ f_j"
+    - "交叉: offspring = α·parent1 + (1-α)·parent2 (实数编码) / 单点/双点交换 (二进制)"
+    - "变异: x_new = x_old + N(0, σ) (高斯变异) / 位翻转 (二进制)"
+  related_cards: ["mc_006", "mc_011", "mc_002"]
+  difficulty: 3
+  quality_rating: 5
+  tags:
+    model_type: ["最优化"]
+    key_concepts: ["自然选择", "交叉变异", "适应度函数", "全局搜索"]
+    mathematical_tools: ["随机过程", "概率论", "编码理论"]

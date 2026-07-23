@@ -35,3 +35,10 @@ method_card:
             y = np.random.uniform(-1, 1, n_samples)
             inside = (x**2 + y**2) <= 1
             return 4 * np.sum(inside) / n_samples
+  related_cards: ["mc_014"]
+  difficulty: 2
+  quality_rating: 5
+  tags:
+    model_type: ["统计分析"]
+    key_concepts: ["大数定律", "随机抽样", "数值积分", "期望估计"]
+    mathematical_tools: ["概率论", "随机过程", "统计推断"]

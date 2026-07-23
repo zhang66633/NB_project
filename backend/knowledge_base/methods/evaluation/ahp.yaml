@@ -33,4 +33,15 @@ method_card:
         RI_dict = {1:0, 2:0, 3:0.58, 4:0.90, 5:1.12, 6:1.24}
         CR = CI / RI_dict[len(A)]
         print(f"权重: {weights}, CR: {CR:.4f}")
-  related_cards: ["mc_009"]
+  typical_scenarios:
+    - "方案比选：多候选方案的优劣排序（选址、选型、选供应商）"
+    - "风险评估：对多种风险因素按重要程度排序"
+    - "绩效评价：多指标综合评价体系的权重确定"
+    - "资源分配：按优先级分配有限资源"
+  related_cards: ["mc_009", "mc_013"]
+  difficulty: 2
+  quality_rating: 5
+  tags:
+    model_type: ["评价类"]
+    key_concepts: ["层次结构", "两两比较", "一致性检验", "Saaty标度"]
+    mathematical_tools: ["特征值分解", "矩阵运算"]

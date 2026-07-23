@@ -54,3 +54,33 @@ template:
         - "进行灵敏度分析：改变关键参数，观察结果变化"
         - "检查模型的鲁棒性：放松假设后模型是否仍然有效"
         - "对比其他建模方法的优劣"
+  applicable_methods:
+    - name: "线性规划 (LP)"
+      card_id: "mc_001"
+      scenarios: "目标函数和约束均为线性、决策变量连续"
+    - name: "整数规划 (IP)"
+      card_id: "mc_002"
+      scenarios: "变量必须为整数（设施选址、生产批量）"
+    - name: "遗传算法 (GA)"
+      card_id: "mc_003"
+      scenarios: "大规模非线性、多局部最优"
+    - name: "模拟退火 (SA)"
+      card_id: "mc_006"
+      scenarios: "组合优化问题（TSP/调度）"
+    - name: "动态规划 (DP)"
+      card_id: "mc_007"
+      scenarios: "多阶段决策、最优子结构"
+    - name: "粒子群 (PSO)"
+      card_id: "mc_011"
+      scenarios: "连续函数优化、参数标定"
+    - name: "最短路径算法"
+      card_id: "mc_018"
+      scenarios: "图/网络上的路径规划问题"
+    - name: "非线性规划"
+      card_id: "mc_020"
+      scenarios: "目标函数或约束为非线性"
+  quality_rating: 5
+  tags:
+    problem_type: ["优化类"]
+    complexity: "composite"
+    key_skills: ["模型分类", "约束分析", "灵敏度分析"]

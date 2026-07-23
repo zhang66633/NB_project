@@ -58,5 +58,11 @@ method_card:
         result = linprog(-c, A_ub=A_ub, b_ub=b_ub, bounds=(0, None))
         print(f"最优解: x = {result.x}, 最优值: {-result.fun}")
 
-  related_cards: ["mc_002", "mc_006"]
+  related_cards: ["mc_002", "mc_006", "mc_007"]
   related_papers: ["paper_2023C_01"]
+  difficulty: 2
+  quality_rating: 5
+  tags:
+    model_type: ["最优化"]
+    key_concepts: ["单纯形法", "对偶理论", "灵敏度分析", "可行域"]
+    mathematical_tools: ["线性代数", "凸优化"]

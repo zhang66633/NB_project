@@ -46,3 +46,24 @@ template:
         - "在测试集上计算评估指标"
         - "分析残差的自相关性"
         - "与基准模型（如朴素预测）对比"
+  applicable_methods:
+    - name: "ARIMA 时间序列"
+      card_id: "mc_004"
+      scenarios: "单变量时间序列，≥30个数据点，无明显季节性"
+    - name: "灰色预测 GM(1,1)"
+      card_id: "mc_005"
+      scenarios: "小样本(4-10个点)，指数增长趋势"
+    - name: "BP 神经网络"
+      card_id: "mc_016"
+      scenarios: "复杂非线性关系，大样本"
+    - name: "SVM (SVR)"
+      card_id: "mc_017"
+      scenarios: "小样本高维，需要非线性回归"
+    - name: "蒙特卡洛模拟"
+      card_id: "mc_010"
+      scenarios: "含随机因素的预测，如风险分析"
+  quality_rating: 5
+  tags:
+    problem_type: ["预测类"]
+    complexity: "composite"
+    key_skills: ["时间序列分析", "平稳性检验", "模型评估"]

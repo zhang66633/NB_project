@@ -30,4 +30,15 @@ method_card:
             u = np.linalg.lstsq(B, Y, rcond=None)[0]
             a, b = u  # 发展系数, 灰作用量
             return lambda k: (x0[0] - b/a) * np.exp(-a*k) + b/a
+  common_mistakes:
+    - "原始数据不是非负的：GM(1,1)要求原始数据非负，若负值需平移处理"
+    - "数据未做级比检验：级比 σ(k)=x(k-1)/x(k) 应在 (e^{-2/(n+1)}, e^{2/(n+1)}) 范围内，否则需做平移变换"
+    - "外推预测步数过多：灰色预测适合短期预测，外推超过样本数的 1/2 时精度急剧下降"
+    - "数据波动大时强行使用：波动数据应先做缓冲算子或改用 DGM(2,1) 等改进模型"
   related_cards: ["mc_004"]
+  difficulty: 2
+  quality_rating: 4
+  tags:
+    model_type: ["预测与分类"]
+    key_concepts: ["灰色系统", "小样本", "累加生成", "指数拟合"]
+    mathematical_tools: ["微分方程", "最小二乘", "累加/累减"]

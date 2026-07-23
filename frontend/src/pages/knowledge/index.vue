@@ -1,26 +1,5 @@
 <template>
-  <!-- Loading -->
-  <div v-if="!authReady" class="h-full flex items-center justify-center">
-    <Loader2 class="h-6 w-6 animate-spin text-muted-foreground" />
-  </div>
-
-  <!-- Access denied -->
-  <div v-else-if="!isContributor" class="h-full flex items-center justify-center">
-    <div class="text-center max-w-sm">
-      <ShieldAlert class="h-14 w-14 mx-auto text-muted-foreground/25 mb-5" />
-      <h2 class="font-display text-2xl font-medium mb-3">仅限贡献者访问</h2>
-      <p class="text-sm text-muted-foreground mb-8 leading-relaxed">
-        知识库管理功能仅对项目开发者开放。<br />
-        如需访问，请联系 zhang66633 或 shu639 授予权限。
-      </p>
-      <router-link to="/" class="inline-flex items-center gap-2 rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background hover:bg-foreground/90 transition-colors">
-        <ArrowLeft class="h-4 w-4" /> 返回首页
-      </router-link>
-    </div>
-  </div>
-
-  <!-- Contributor view -->
-  <div v-else class="h-full overflow-y-auto overflow-x-hidden bg-grid-paper">
+  <div class="h-full overflow-y-auto overflow-x-hidden bg-grid-paper">
     <div class="mx-auto max-w-4xl px-6 sm:px-10 py-12 sm:py-16 overflow-x-hidden">
       <p class="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4">§4 &nbsp; 知识库</p>
       <h1 class="font-display text-3xl sm:text-4xl font-medium tracking-tight">方法卡片、真题与模板</h1>
@@ -429,6 +408,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
+import { useRouter } from "vue-router";
 import {
   Search, Library, Loader2, ChevronRight, RefreshCw, Database,
   Upload, Sparkles, Check, RotateCcw, Pencil, Trash2, FileText, FileUp, X, Layers,
@@ -451,9 +431,10 @@ import {
 } from "@/apis/knowledgeApi";
 
 // ── auth ─────────────────────────────────────────────────────────
+const router = useRouter();
 const auth = useAuthStore();
 const isContributor = computed(() => auth.isContributor);
-const authReady = ref(false);
+const authReady = computed(() => auth.authReady);
 
 // ── tabs ─────────────────────────────────────────────────────────
 const tabs = [
@@ -754,8 +735,7 @@ async function doSaveExtract() {
 const stats = ref<KBStats>({ methods_count:0,papers_count:0,templates_count:0,problems_count:0,total:0 });
 async function loadStats() { try { const r = await getKBStats(); stats.value = r.data; } catch {/*ignore*/} }
 onMounted(async () => {
-  if (auth.token) await auth.checkSession();
-  authReady.value = true;
-  if (isContributor.value) { loadStats(); loadBrowseAll(); }
+  if (auth.token && !auth.user) await auth.checkSession();
+  loadStats(); loadBrowseAll();
 });
 </script>

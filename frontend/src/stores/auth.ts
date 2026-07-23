@@ -14,6 +14,7 @@ export const useAuthStore = defineStore("auth", () => {
   const token = ref<string | null>(_loadToken());
   const isContributor = ref(false);
   const loading = ref(false);
+  const authReady = ref(false);
 
   const isLoggedIn = computed(() => !!token.value && !!user.value);
   const displayName = computed(() => user.value?.login || user.value?.name || "游客");
@@ -37,8 +38,10 @@ export const useAuthStore = defineStore("auth", () => {
     try {
       const data = await getAuthCallback(code);
       _setSession(data.access_token, data.user);
+      authReady.value = true;
       return true;
     } catch {
+      authReady.value = true;
       return false;
     } finally {
       loading.value = false;
@@ -46,17 +49,20 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   async function checkSession(): Promise<boolean> {
-    if (!token.value) return false;
+    if (!token.value) { authReady.value = true; return false; }
     try {
       const data = await getAuthUser();
       if (data.authenticated && data.user) {
         user.value = data.user;
         isContributor.value = data.is_contributor;
+        authReady.value = true;
         return true;
       }
+      authReady.value = true;
       return false;
     } catch {
       _clearSession();
+      authReady.value = true;
       return false;
     }
   }
@@ -78,6 +84,7 @@ export const useAuthStore = defineStore("auth", () => {
     token.value = null;
     user.value = null;
     isContributor.value = false;
+    authReady.value = true;
     _saveToken(null);
   }
 
@@ -97,7 +104,7 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   return {
-    user, token, isContributor, loading,
+    user, token, isContributor, loading, authReady,
     isLoggedIn, displayName, avatar, initials,
     fetchLoginUrl, handleCallback, checkSession, logout,
   };

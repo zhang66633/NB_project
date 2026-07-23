@@ -40,9 +40,11 @@ async def create_task(
 
     # 在独立线程中运行编排器（节点含同步阻塞调用 llm.invoke / subprocess），
     # 以免阻塞事件循环导致 HTTP 响应体无法刷新、WS 进度卡住
+    print(f"[API] Spawning orchestrator for task={task_id}", flush=True)
     asyncio.create_task(
         asyncio.to_thread(_run_orchestrator_sync, task_id, req.problem, req.mode, uid)
     )
+    print(f"[API] Orchestrator spawned for task={task_id}", flush=True)
 
     return TaskResponse(**task)
 

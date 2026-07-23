@@ -82,7 +82,13 @@ async def list_tasks():
 
 def _run_orchestrator_sync(task_id: str, problem: str, mode: str, user_id: str = "guest"):
     """在线程池中运行的同步入口（节点含阻塞调用，必须脱离事件循环）。"""
-    asyncio.run(_run_orchestrator(task_id, problem, mode, user_id))
+    try:
+        asyncio.run(_run_orchestrator(task_id, problem, mode, user_id))
+    except Exception:
+        import traceback
+        with open("_orch_error.log", "a", encoding="utf-8") as f:
+            f.write(f"\n=== {task_id} ===\n")
+            traceback.print_exc(file=f)
 
 
 async def _run_orchestrator(task_id: str, problem: str, mode: str, user_id: str = "guest"):

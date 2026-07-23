@@ -9,7 +9,7 @@ from .schemas.response import TaskResponse, MessageResponse
 from ..config import get_settings
 from ..auth import GitHubUser, get_current_user
 from ..services.session import get_session_manager
-from .apikeys import get_active_api_key
+from .apikeys import get_active_api_key, _resolve_user_id
 
 tasks_router = APIRouter()
 

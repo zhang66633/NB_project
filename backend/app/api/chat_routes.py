@@ -118,7 +118,7 @@ async def _event_stream(req: ChatRequest, api_key_config: dict | None = None):
 async def chat(req: ChatRequest, user: GitHubUser | None = Depends(get_current_user)):
     """自由问答 SSE 流式接口。"""
     # 检查是否有可用的 API Key
-    from .router import get_active_api_key, _resolve_user_id
+    from .apikeys import get_active_api_key, _resolve_user_id
     uid = _resolve_user_id(user=user)
     active_key = get_active_api_key(uid)
     if not active_key:

@@ -14,7 +14,7 @@
 > | 前端页面 / API | ✅ 完成 | Chat / Teach / Solution / Knowledge / APIKeys / Settings / Login |
 > | 认证 / 密钥管理 | ✅ 完成 | GitHub OAuth + `pages/apikeys` + `/api/apikeys`（支持多服务商） |
 > | 自由问答 SSE | ✅ 完成 | `/api/chat` 流式输出，支持 chat/teach 双模式 |
-> | **端到端联调** | 🟡 部分跑通 | REST + WS + SSE 均可用；**缺真实任务冒烟（知识库数据不足影响答案质量）** |
+> | **端到端联调** | ✅ 完成 | REST + WS + SSE 全部打通；任务 `659fbc6a` 全链路验证（9 节点全部执行），输出完整 LaTeX 论文 |
 
 ---
 
@@ -355,7 +355,7 @@ START → classify_problem → retrieve_knowledge → plan_execution
 
 **可交付**: 前端输入问题 → WS 推送分类结果 → Chat/Teach 页面展示输出
 
-### Phase 2 — 建模 + 求解 + Notebook (预计 3-5 天)
+### Phase 2 — 建模 + 求解 + Notebook (已完成 ✅)
 
 **目标**: 完整的建模流水线 + Notebook 渲染
 
@@ -365,7 +365,7 @@ START → classify_problem → retrieve_knowledge → plan_execution
 
 **可交付**: 建模问题 → 前端展示模型公式 + 代码 + 执行结果（Notebook 格式）
 
-### Phase 3 — 验证 + 写作 + 回退 (预计 3-5 天)
+### Phase 3 — 验证 + 写作 + 回退 (已完成 ✅)
 
 **目标**: 全部 5 Agent 就位，验证回退循环，论文输出
 
@@ -839,7 +839,7 @@ paper:
 | 前端复刻不完整 | 以实际实现为准；缺失组件按需安装 |
 | WebSocket 消息格式不匹配 | Phase 1 已做 WS 联调验证 ✅ |
 | LLM 数学公式/代码错误 | 验证 Agent 做 gate；求解 Agent ReAct 循环自纠错 |
-| 知识库数据不足影响答案质量 | 按 Phase 4 计划扩充至 P0 标准 |
+| 知识库数据不足影响答案质量 | ✅ 已扩充至 P0 标准（20 卡片 + 5 论文 + 3 模板）；端到端任务已验证 |
 | 国产模型 API 可用性 | 已锁定国产栈（DeepSeek/Qwen/GLM/豆包），LLMFactory 支持多提供商切换 |
 
 ---

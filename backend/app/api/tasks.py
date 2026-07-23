@@ -40,8 +40,6 @@ async def create_task(
 
     # 在独立线程中运行编排器（节点含同步阻塞调用 llm.invoke / subprocess），
     # 以免阻塞事件循环导致 HTTP 响应体无法刷新、WS 进度卡住
-    with open("_api_trace.log", "a", encoding="utf-8") as f:
-        f.write(f"scheduling orchestrator for {task_id}\n")
     asyncio.create_task(
         asyncio.to_thread(_run_orchestrator_sync, task_id, req.problem, req.mode, uid)
     )
@@ -82,7 +80,6 @@ async def list_tasks():
 
 def _run_orchestrator_sync(task_id: str, problem: str, mode: str, user_id: str = "guest"):
     """在线程池中运行的同步入口（节点含阻塞调用，必须脱离事件循环）。"""
-    with open("_orch_trace.log", "a") as f: f.write(f"ENTER: {task_id}\n")
     try:
         # 子线程中 asyncio.run() 默认不创建 ThreadPoolExecutor，
         # 导致 langgraph 内部的 run_in_executor 调用失败。
@@ -101,7 +98,6 @@ def _run_orchestrator_sync(task_id: str, problem: str, mode: str, user_id: str =
 async def _run_orchestrator(task_id: str, problem: str, mode: str, user_id: str = "guest"):
     """在后台运行 LangGraph 编排器。"""
     try:
-        with open("_orch_trace.log", "a") as f: f.write(f"RUN: {task_id}\n")
         from app.core.state import create_initial_state
         from app.core.workflow import get_orchestrator
 
@@ -138,7 +134,6 @@ async def _run_orchestrator(task_id: str, problem: str, mode: str, user_id: str 
         final_state = state
 
         async for chunk in orchestrator.astream(state, {"recursion_limit": 50}, stream_mode="updates"):
-            with open("_orch_trace.log", "a") as f: f.write(f"node: {list(chunk.keys())}\n")
             for node_name, node_output in chunk.items():
                 stage, desc = node_meta.get(node_name, (node_name, f"执行: {node_name}"))
                 progress_msg = {

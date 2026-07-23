@@ -64,11 +64,24 @@ class SandboxExecutor:
         self.output_dir = Path(tempfile.gettempdir()) / "mathmodel_outputs"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def run(self, code: str) -> dict:
-        """执行代码，返回 stdout、stderr、图片路径列表。"""
+    def run(self, code: str, extra_files: list[str] | None = None) -> dict:
+        """执行代码，返回 stdout、stderr、图片路径列表。
+
+        extra_files: 可选，需要复制到沙箱工作目录的文件绝对路径列表。
+        """
         run_id = str(uuid.uuid4())[:8]
         output_subdir = self.output_dir / run_id
         output_subdir.mkdir(parents=True, exist_ok=True)
+
+        # 复制额外文件到沙箱工作目录
+        if extra_files:
+            import shutil as _shutil
+            for fpath in extra_files:
+                try:
+                    _shutil.copy2(fpath, str(output_subdir / Path(fpath).name))
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning("复制文件到沙箱失败 %s: %s", fpath, e)
 
         # 包装代码：阻断网络 + 自动保存 matplotlib 图表
         wrapped_code = self._wrap_code(code, str(output_subdir))

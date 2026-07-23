@@ -18,20 +18,7 @@
         input-placeholder="描述你想解决的建模问题..."
         @send="handleUserSend"
         @cancel="handleCancel"
-      >
-        <template #progress>
-          <ProgressTimeline
-            v-if="rightPanelOpen === false || true"
-            class="mx-4 sm:mx-8 mt-2 mb-4"
-            :steps="agentSteps"
-            :running="taskStore.isRunning"
-            :completed="taskStore.completed"
-            :ws-status="taskStore.wsStatus"
-            :open="true"
-            @toggle="rightPanelOpen = !rightPanelOpen"
-          />
-        </template>
-      </ChatArea>
+      />
     </div>
     <Transition name="slide-right">
       <div v-if="rightPanelOpen" class="w-80 shrink-0 border-l bg-background p-4 overflow-y-auto">

@@ -23,12 +23,20 @@ class ChatMessage(BaseModel):
     content: str
 
 
+class ChatFileRef(BaseModel):
+    """聊天附件引用（已上传到 /files/upload 的文件）。"""
+    file_id: str
+    filename: str
+
+
 class ChatRequest(BaseModel):
     """自由问答请求。无状态：前端携带完整历史，后端滑动窗口截断。"""
     messages: list[ChatMessage]
     use_rag: bool = False  # 预留：后续挂知识库检索
     # 对话模式：chat=自由问答（直接给结论），teach=教学模式（苏格拉底式引导，不直接给答案）
     mode: Literal["chat", "teach"] = "chat"
+    # 本轮附带的文件（已上传），LLM 可在 run_code 中引用
+    files: list[ChatFileRef] = []
 
 
 class ApiKeyCreate(BaseModel):

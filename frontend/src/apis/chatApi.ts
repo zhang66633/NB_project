@@ -8,6 +8,12 @@ export interface ChatHistoryMessage {
   content: string;
 }
 
+/** 聊天附件引用（已上传的文件） */
+export interface ChatFileRef {
+  file_id: string;
+  filename: string;
+}
+
 export interface ToolCallEvent {
   name: string;
   args: Record<string, unknown>;
@@ -52,6 +58,8 @@ export interface StreamChatOptions {
   useRag?: boolean;
   /** 对话模式：chat=自由问答（默认），teach=教学模式（引导式） */
   mode?: "chat" | "teach";
+  /** 本轮附带的文件引用 */
+  files?: ChatFileRef[];
 }
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
@@ -60,11 +68,35 @@ function getToken(): string | null {
   return localStorage.getItem("mma:token");
 }
 
+/** 上传聊天附件到 /files/upload，返回 file_id + filename */
+export async function uploadChatFile(file: File): Promise<ChatFileRef> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const resp = await fetch(`${BASE_URL}/files/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`上传失败 (${resp.status}): ${text || resp.statusText}`);
+  }
+
+  const data = await resp.json();
+  return { file_id: data.file_id, filename: data.filename ?? file.name };
+}
+
 export async function streamChat(
   messages: ChatHistoryMessage[],
   opts: StreamChatOptions,
 ): Promise<void> {
-  const { onDelta, onToolCall, onToolResult, onClarify, onCodeExec, onDone, onError, signal, useRag = false, mode = "chat" } = opts;
+  const { onDelta, onToolCall, onToolResult, onClarify, onCodeExec, onDone, onError, signal, useRag = false, mode = "chat", files } = opts;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -78,7 +110,7 @@ export async function streamChat(
     response = await fetch(`${BASE_URL}/chat`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ messages, use_rag: useRag, mode }),
+      body: JSON.stringify({ messages, use_rag: useRag, mode, files: files ?? [] }),
       signal,
     });
   } catch (e: any) {

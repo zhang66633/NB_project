@@ -38,9 +38,6 @@
             </div>
           </li>
         </ol>
-        <div v-if="wsStatus && wsStatus !== 'connected'" class="mt-3 font-mono text-[10px] text-muted-foreground">
-          WS 状态: {{ wsStatus }}
-        </div>
       </div>
     </Transition>
   </div>

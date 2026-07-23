@@ -29,6 +29,7 @@ from ..core.prompts._shared import MARKDOWN_RULES, TEACH_SHARED_RULES
 from ..tools.kb_tools import create_kb_tools
 from ..tools.math_tools import create_math_tools
 from ..tools.interaction_tools import create_interaction_tools
+from ..tools.web_search_tools import create_web_search_tools
 from ..auth import GitHubUser, get_current_user
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,8 @@ CHAT_SYSTEM_PROMPT = f"""# 数学建模助手
   提出 1-3 个关键问题各附 2-4 个选项。**问题已明确时不要调用**
 - `run_code`：需要数值验证、画函数图、跑仿真或复杂计算时调用，
   代码须完整可运行，用 print() 输出关键结果
+- `web_search`：需要最新信息、竞赛真题、优秀论文、算法应用案例时调用，
+  搜索后**总结归纳**给出，注明来源链接
 
 {MARKDOWN_RULES}"""
 
@@ -87,6 +90,7 @@ TEACH_SYSTEM_PROMPT = f"""# 数学建模引导式导师
   与数学计算（sympy_compute / solve_optimization）—— 数学工具仅在需要确认某公式/数值时调用
 - `ask_user`：学生描述模糊、无法判断引导方向时调用，提出 1-2 个关键问题让学生选择
 - `run_code`：需要数值验证或画图辅助讲解时调用，执行后引导学生理解输出结果
+- `web_search`：需要查找最新案例、论文或教程辅助引导时调用，把关键信息转成引导性问题
 
 {MARKDOWN_RULES}"""
 
@@ -99,6 +103,20 @@ def _to_lc_messages(req: ChatRequest) -> list:
     """把请求中的消息历史转成 LangChain 消息，并做滑动窗口截断。"""
     history = req.messages[-MAX_HISTORY_MESSAGES:]
     msgs = [SystemMessage(content=_system_prompt(req.mode))]
+
+    # 如果本轮有附件，注入文件上下文供 LLM 参考
+    if req.files:
+        file_lines = []
+        for f in req.files:
+            file_lines.append(f"- {f.filename} (file_id: {f.file_id})")
+        file_ctx = (
+            "## 用户上传的附件\n"
+            "以下文件已上传，可在 run_code 中通过 file_ids 参数引用：\n"
+            + "\n".join(file_lines)
+            + "\n调用 run_code 时把对应 file_id 传入 file_ids 即可在代码中直接用文件名读取。"
+        )
+        msgs.append(SystemMessage(content=file_ctx))
+
     for m in history:
         if m.role == "user":
             msgs.append(HumanMessage(content=m.content))
@@ -122,8 +140,8 @@ async def _event_stream(req: ChatRequest, api_key_config: dict | None = None):
     """SSE 生成器：流式输出 LLM 增量，并在 LLM 调用工具时通知前端。"""
     try:
         llm = LLMFactory.create("chat", api_key_config=api_key_config)
-        # 合并所有工具: KB 检索 + 数学计算 + 交互（ask_user / run_code）
-        tools = create_kb_tools() + create_math_tools() + create_interaction_tools()
+        # 合并所有工具: KB 检索 + 数学计算 + 交互（ask_user / run_code）+ Web 搜索
+        tools = create_kb_tools() + create_math_tools() + create_interaction_tools() + create_web_search_tools()
         tool_map = {t.name: t for t in tools}
         llm_with_tools = llm.bind_tools(tools)
 

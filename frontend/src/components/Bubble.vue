@@ -32,6 +32,16 @@
             <div v-if="toolInput" class="text-xs text-muted-foreground font-mono bg-muted/40 rounded p-1.5 overflow-x-auto border border-border">
               {{ formatToolInput(toolInput) }}
             </div>
+            <!-- run_code 图表内联显示 -->
+            <div v-if="toolImages.length > 0" class="space-y-2 mt-1.5">
+              <img
+                v-for="(src, i) in toolImages"
+                :key="i"
+                :src="src"
+                class="max-w-full rounded-md border border-border"
+                loading="lazy"
+              />
+            </div>
             <details v-if="toolOutput" class="text-xs">
               <summary class="cursor-pointer text-muted-foreground hover:text-foreground select-none flex items-center gap-1">
                 <ChevronRight class="h-3 w-3 transition-transform" :class="{ 'rotate-90': toolOutputOpen }" />
@@ -252,6 +262,19 @@ const toolOutput = computed(() => {
 });
 
 const toolOutputOpen = ref(false);
+
+const toolImages = computed<string[]>(() => {
+  const out = toolOutput.value;
+  if (!out || !Array.isArray(out)) return [];
+  const imgs: string[] = [];
+  for (const item of out) {
+    if (item && typeof item === "object" && "images" in item) {
+      const arr = (item as any).images;
+      if (Array.isArray(arr)) imgs.push(...arr);
+    }
+  }
+  return imgs;
+});
 
 const toolOutputText = computed(() => {
   const out = toolOutput.value;

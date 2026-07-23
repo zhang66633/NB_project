@@ -4,7 +4,7 @@
  * 调 SSE 接口并流式就地累加、工具调用可视化、运行态管理、最新会话恢复。
  */
 import { useChatSessionStore, type SessionMode } from "@/stores/chatSession";
-import { streamChat, type ChatHistoryMessage } from "@/apis/chatApi";
+import { streamChat, type ChatHistoryMessage, type ChatFileRef } from "@/apis/chatApi";
 import type { Message } from "@/types/response";
 
 function generateId() {
@@ -25,7 +25,7 @@ export function useStreamChat(sessionMode: SessionMode, chatMode: "chat" | "teac
       }));
   }
 
-  async function handleUserSend(text: string) {
+  async function handleUserSend(text: string, files?: ChatFileRef[]) {
     let sessionId = chatSession.getActiveId(sessionMode).value;
     if (!sessionId) {
       sessionId = chatSession.createSession(sessionMode);
@@ -62,6 +62,7 @@ export function useStreamChat(sessionMode: SessionMode, chatMode: "chat" | "teac
 
     await streamChat(buildHistory(), {
       mode: chatMode,
+      files,
       onDelta(delta) {
         acc += delta;
         const id = ensureAgentMsg();
@@ -119,7 +120,11 @@ export function useStreamChat(sessionMode: SessionMode, chatMode: "chat" | "teac
               if (event.stdout) parts.push(`输出:\n${event.stdout}`);
               if (event.images?.length) parts.push(`图表: ${event.images.length} 张`);
               chatSession.updateMessage(sessionMode, sessionId, m.id, {
-                output: [{ name: "run_code", preview: parts.join("\n") || "执行完成" }],
+                output: [{
+                  name: "run_code",
+                  preview: parts.join("\n") || "执行完成",
+                  images: event.images ?? [],
+                }],
               } as any);
             }
             break;

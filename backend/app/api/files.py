@@ -1,7 +1,9 @@
 """文件上传/下载 + 图片服务。"""
 
+import shutil
+import uuid
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 from ..config import get_settings
 

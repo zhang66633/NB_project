@@ -48,8 +48,16 @@ def _load_api_keys():
     if path.exists():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            _api_keys_store = data.get("keys", {})
-            _user_default_keys = data.get("default_keys", {})
+            _api_keys_store = data.get("keys", {}) or {}
+            # 兼容历史格式：default_keys 可能是 list / None / 缺失
+            dk = data.get("default_keys")
+            if isinstance(dk, dict):
+                _user_default_keys = dk
+            elif isinstance(dk, list):
+                # 旧格式可能是 [key_id1, key_id2] 列表 → 视为空 dict
+                _user_default_keys = {}
+            else:
+                _user_default_keys = {}
             # 兼容旧格式: {key_id: {...}} → 并入 guest 桶
             if _api_keys_store and not any(isinstance(v, dict) and any(
                 isinstance(vv, dict) and "key" in vv for vv in v.values()

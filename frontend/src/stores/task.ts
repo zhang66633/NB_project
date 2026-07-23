@@ -45,32 +45,53 @@ export const useTaskStore = defineStore("task", () => {
     const event = data?.event;
 
     // 节点完成：追加一条进度 system 消息 + 更新当前步骤
+    // 优先用 summary（节点实际产出）替代空泛的 desc，让用户看到"做了什么"
     if (event === "node_end") {
       const stage = data.data?.stage ?? "";
       const title = data.data?.title ?? stage;
       const desc = data.data?.desc ?? "";
+      const summary: string = (data.data?.summary ?? "").trim();
+      const content = summary
+        ? `[${title}] ${desc}\n\n${summary}${summary.length >= 280 ? "…" : ""}`
+        : `[${title}] ${desc}…`;
       appendMessage(taskId, {
         id: data.id ?? genId(),
         msg_type: "system",
         type: "info",
-        content: `[${stage}] ${title}${desc ? "：" + desc : ""}`,
+        content,
         created_at: now(),
       } as Message);
       currentStep.value = stage || currentStep.value;
       return;
     }
 
-    // 任务结束：停止运行态，展示最终答案（agent 气泡，走 Markdown/LaTeX 渲染）
+    // 任务结束：停止运行态，主动拉完整 final_response 渲染
     if (event === "task_end") {
       isRunning.value = false;
       completed.value = true;
       currentStep.value = "已完成";
-      if (data.data?.final_response) {
-        appendMessage(taskId, {
-          id: "final-" + taskId,
-          msg_type: "agent",
-          content: data.data.final_response,
-          created_at: now(),
+      const finalPreview: string = data.data?.final_response_preview ?? "";
+      if (data.data?.final_response_length) {
+        // 先展示轻量预览，再异步 GET 完整内容并替换
+        if (finalPreview) {
+          appendMessage(taskId, {
+            id: "final-" + taskId,
+            msg_type: "agent",
+            content: finalPreview + (data.data.final_response_length > finalPreview.length ? "\n\n_（正在加载完整论文…）_" : ""),
+            streaming: false,
+            created_at: now(),
+          });
+        }
+        // 异步拉取完整内容
+        fetchFullFinalResponse(taskId).catch((e) => {
+          console.error("拉取完整论文失败：", e);
+          appendMessage(taskId, {
+            id: genId(),
+            msg_type: "system",
+            type: "warning",
+            content: "⚠️ 完整论文拉取失败，仅显示上文预览片段。请重试或刷新页面。",
+            created_at: now(),
+          } as Message);
         });
       } else if (data.data?.message) {
         appendMessage(taskId, {
@@ -83,6 +104,30 @@ export const useTaskStore = defineStore("task", () => {
       }
       return;
     }
+  }
+
+  async function fetchFullFinalResponse(taskId: string) {
+    const { getTask } = await import("@/apis/commonApi");
+    const res = await getTask(taskId);
+    const task = res.data?.data ?? res.data;
+    const full: string = task?.final_response ?? task?.writing_output ?? "";
+    if (!full) return;
+    // 替换占位消息
+    const bucket = messagesByTask.value[taskId];
+    if (!bucket) return;
+    const idx = bucket.findIndex((m) => m.id === "final-" + taskId);
+    if (idx === -1) {
+      appendMessage(taskId, {
+        id: "final-" + taskId,
+        msg_type: "agent",
+        content: full,
+        streaming: false,
+        created_at: now(),
+      });
+      return;
+    }
+    bucket[idx] = { ...bucket[idx], content: full };
+    messagesByTask.value = { ...messagesByTask.value, [taskId]: [...bucket] };
   }
 
   function connectWebSocket(taskId: string) {

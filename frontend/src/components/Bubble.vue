@@ -39,9 +39,16 @@
             </details>
           </div>
 
-          <div v-else-if="isSystem" class="flex items-center gap-2">
-            <component :is="sysIcon" class="h-4 w-4 shrink-0" :class="sysColor" />
-            <span class="text-xs">{{ content }}</span>
+          <div v-else-if="isSystem" class="min-w-[260px] space-y-1.5">
+            <div class="flex items-center gap-1.5">
+              <component :is="sysIcon" class="h-3.5 w-3.5 shrink-0" :class="sysColor" />
+              <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                {{ systemHeadline }}
+              </span>
+            </div>
+            <div class="text-xs leading-relaxed whitespace-pre-wrap break-words text-foreground/90">
+              {{ systemBody }}
+            </div>
           </div>
 
           <div
@@ -51,6 +58,28 @@
             v-html="renderedContent"
             @click="isTyping && skip()"
           />
+
+          <div v-if="isFinalPaper" class="mt-2 flex items-center gap-2 border-t border-border pt-2">
+            <span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              论文操作
+            </span>
+            <button
+              class="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background px-2.5 text-xs hover:bg-accent hover:text-foreground transition-colors"
+              title="在新窗口中打开论文并调出打印对话框，可保存为 PDF"
+              @click="exportPdf"
+            >
+              <Printer class="h-3 w-3" />
+              <span>导出 PDF</span>
+            </button>
+            <button
+              class="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background px-2.5 text-xs hover:bg-accent hover:text-foreground transition-colors"
+              title="复制论文 Markdown 源（含 LaTeX 公式）"
+              @click="copyMarkdown"
+            >
+              <Clipboard class="h-3 w-3" />
+              <span>{{ copied ? "已复制" : "复制 Markdown" }}</span>
+            </button>
+          </div>
 
           <div v-else class="flex items-center gap-1.5 py-1">
             <span class="h-1.5 w-1.5 rounded-full bg-current animate-bounce" style="animation-delay: 0ms" />
@@ -79,6 +108,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   XCircle,
+  Printer,
+  Clipboard,
 } from "lucide-vue-next";
 import type { Message, SystemMessage as SysMsg, AgentMessage, ToolMessage } from "@/types/response";
 import { AgentType } from "@/types/enum";
@@ -139,6 +170,32 @@ const avatarLetter = computed(() => {
   return "A";
 });
 
+// 论文消息：id 以 "final-" 开头（来自 taskStore 写入的最终论文 agent 气泡）
+const isFinalPaper = computed(
+  () => isAgent.value && typeof props.message.id === "string" && props.message.id.startsWith("final-"),
+);
+const copied = ref(false);
+
+async function copyMarkdown() {
+  try {
+    await navigator.clipboard.writeText(content.value);
+    copied.value = true;
+    setTimeout(() => (copied.value = false), 1500);
+  } catch {
+    /* 浏览器拦截复制权限 — 静默忽略 */
+  }
+}
+
+function exportPdf() {
+  // 动态引入避免主 bundle 体积
+  import("@/utils/exportPaper").then(({ exportPaperAsPDF }) => {
+    exportPaperAsPDF({
+      title: "数学建模论文",
+      markdown: content.value,
+    });
+  });
+}
+
 const toolName = computed(() => {
   if (!isTool.value) return "";
   return (props.message as ToolMessage).tool_name ?? "";
@@ -184,6 +241,20 @@ const sysColor = computed(() => {
     case "error": return "text-destructive";
     default: return "text-muted-foreground";
   }
+});
+
+// 把 "[阶段] 描述\n\n摘要…" 拆成"标题行 + 摘要正文"，便于分别样式化
+const systemHeadline = computed(() => {
+  if (!isSystem.value) return "";
+  const c = content.value;
+  const idx = c.indexOf("\n");
+  return idx === -1 ? c : c.slice(0, idx);
+});
+const systemBody = computed(() => {
+  if (!isSystem.value) return "";
+  const c = content.value;
+  const idx = c.indexOf("\n");
+  return idx === -1 ? "" : c.slice(idx + 1).trim();
 });
 
 // 对带 LaTeX 的流式内容，流式期间每次全量 parse 可能渲染半个公式。

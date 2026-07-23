@@ -1,6 +1,6 @@
 """任务与编排器路由 — create/get/cancel 任务 + 后台编排器。"""
 
-import asyncio, json, logging, uuid, shutil
+import asyncio, json, logging, uuid, shutil, re
 from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
 from fastapi.responses import FileResponse
@@ -130,26 +130,68 @@ async def _run_orchestrator(task_id: str, problem: str, mode: str, user_id: str 
             "writing_agent": ("论文写作", "生成 LaTeX 论文"),
             "format_response": ("整合输出", "汇总最终结果"),
         }
+
+        # node_name → 从 node_output 中取摘要的字段映射
+        # 把"做了什么"摘要推给前端聊天面板，让用户看到每个 Agent 实际产出
+        node_output_fields = {
+            "analysis_agent": "analysis_output",
+            "modeling_agent": "model_output",
+            "solving_agent": "solving_output",
+            "verification_agent": "verification_output",
+            "writing_agent": "writing_output",
+        }
+
+        def _make_summary(node_name: str, node_output: dict) -> str:
+            """从 node_output 中抽取该 Agent 的实际产出摘要（首 280 字）。"""
+            field = node_output_fields.get(node_name)
+            if not field:
+                return ""
+            text = node_output.get(field) or ""
+            text = str(text).strip()
+            if not text:
+                return ""
+            # 去掉前导 markdown 标题与多余空白
+            text = re.sub(r"^#+\s+", "", text, flags=re.MULTILINE)
+            text = re.sub(r"\s+", " ", text)
+            return text[:280].strip()
+
         messages = []
         final_state = state
 
         async for chunk in orchestrator.astream(state, {"recursion_limit": 50}, stream_mode="updates"):
             for node_name, node_output in chunk.items():
                 stage, desc = node_meta.get(node_name, (node_name, f"执行: {node_name}"))
+                summary = _make_summary(node_name, node_output) if node_output else ""
+
+                # 构造更具体的聊天消息：标题 + 描述 + 摘要
+                if summary:
+                    content = f"[{stage}] {desc}\n\n{summary}{'…' if len(str(node_output.get(node_output_fields.get(node_name, ''), ''))) > 280 else ''}"
+                else:
+                    content = f"[{stage}] {desc}…"
+
                 progress_msg = {
                     "id": str(uuid.uuid4())[:8],
                     "msg_type": "system",
-                    "content": f"[{stage}] {desc}...",
+                    "type": "info",
+                    "content": content,
+                    "agent_type": node_name.replace("_agent", "").replace("_", ""),
                     "created_at": None,
                 }
                 messages.append(progress_msg)
                 session_mgr.update(task_id, messages=messages)
                 # 实时推送到 WebSocket（fakeredis 或真实 Redis）
+                # 前端拿 summary 渲染更具体的卡片，避免与顶部时间线信息重复
                 if publisher:
                     publisher.node_end(
                         task_id,
                         node_name,
-                        {"stage": stage, "title": stage, "desc": desc, "status": "completed"},
+                        {
+                            "stage": stage,
+                            "title": stage,
+                            "desc": desc,
+                            "summary": summary,
+                            "status": "completed",
+                        },
                     )
                 final_state = node_output
 
@@ -176,13 +218,20 @@ async def _run_orchestrator(task_id: str, problem: str, mode: str, user_id: str 
             verification_output=result.get("verification_output", ""),
             messages=messages,
         )
-        # 通知前端任务结束（携带最终答案用于聊天面板展示）
+        # 通知前端任务结束。
+        # final_response 可能很长（论文含 LaTeX 全章），不在 WS payload 里塞全文：
+        # WS 只推一个轻量级完成信号 + 前 800 字预览；前端再 GET /api/tasks/{id}
+        # 拿到 writing_output / final_response 完整内容（已存到 session_mgr）。
         if publisher:
             publisher.task_end(
                 task_id,
                 "format_response",
                 "completed",
-                {"final_response": result.get("final_response", "")[:4000]},
+                {
+                    "final_response_preview": (result.get("final_response", "") or "")[:800],
+                    "final_response_length": len(result.get("final_response", "") or ""),
+                    "writing_output_length": len(result.get("writing_output", "") or ""),
+                },
             )
 
     except Exception as e:

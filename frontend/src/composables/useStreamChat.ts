@@ -39,27 +39,35 @@ export function useStreamChat(sessionMode: SessionMode, chatMode: "chat" | "teac
     };
     chatSession.addMessage(sessionMode, sessionId, userMsg);
 
-    // 占位一条 agent 空消息，后续流式就地累加
-    const agentMsg: Message = {
-      id: generateId(),
-      msg_type: "agent",
-      content: "",
-      streaming: true,
-      created_at: new Date().toISOString(),
-    };
-    chatSession.addMessage(sessionMode, sessionId, agentMsg);
-
     chatSession.setRunning(sessionMode);
 
+    // agent 消息延迟到第一个 text delta 时再创建，
+    // 确保工具调用气泡排在最终回答之前
+    let agentMsgId: string | null = null;
     let acc = "";
+
+    function ensureAgentMsg(): string {
+      if (!agentMsgId) {
+        agentMsgId = generateId();
+        chatSession.addMessage(sessionMode, sessionId, {
+          id: agentMsgId,
+          msg_type: "agent",
+          content: "",
+          streaming: true,
+          created_at: new Date().toISOString(),
+        });
+      }
+      return agentMsgId;
+    }
+
     await streamChat(buildHistory(), {
       mode: chatMode,
       onDelta(delta) {
         acc += delta;
-        chatSession.updateMessage(sessionMode, sessionId, agentMsg.id, { content: acc });
+        const id = ensureAgentMsg();
+        chatSession.updateMessage(sessionMode, sessionId, id, { content: acc });
       },
       onToolCall(event) {
-        // 在 agent 回答前插入一条工具调用消息，便于前端可视化
         const toolMsg: Message = {
           id: generateId(),
           msg_type: "tool",
@@ -68,13 +76,6 @@ export function useStreamChat(sessionMode: SessionMode, chatMode: "chat" | "teac
           output: null,
           created_at: new Date().toISOString(),
         };
-        // 把工具消息插在 agent 占位消息之前
-        const msgs = chatSession.getActiveMessages(sessionMode).value;
-        const idx = msgs.findIndex((m) => m.id === agentMsg.id);
-        if (idx >= 0) {
-          // 直接通过 store 内部方法插入更优雅，但目前接口只有 push/append；
-          // 这里改为把工具消息 append 在 agent 之后，agent 仍是"回答"，工具在它上方
-        }
         chatSession.addMessage(sessionMode, sessionId, toolMsg);
       },
       onToolResult(event) {
@@ -91,14 +92,16 @@ export function useStreamChat(sessionMode: SessionMode, chatMode: "chat" | "teac
         }
       },
       onDone() {
-        chatSession.updateMessage(sessionMode, sessionId, agentMsg.id, {
+        const id = ensureAgentMsg();
+        chatSession.updateMessage(sessionMode, sessionId, id, {
           content: acc || "（未收到回复内容）",
           streaming: false,
         });
         chatSession.setRunning(null);
       },
       onError(message) {
-        chatSession.updateMessage(sessionMode, sessionId, agentMsg.id, {
+        const id = ensureAgentMsg();
+        chatSession.updateMessage(sessionMode, sessionId, id, {
           content: `出错了：${message}`,
           streaming: false,
         });

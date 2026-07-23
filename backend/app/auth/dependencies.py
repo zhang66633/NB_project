@@ -35,8 +35,14 @@ def decode_jwt(token: str) -> GitHubUser | None:
     settings = get_settings()
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+        # 兼容旧 token：sub 可能是 string(login) 或 int(id)
+        sub_raw = payload.get("sub", 0)
+        try:
+            uid = int(sub_raw)
+        except (ValueError, TypeError):
+            uid = 0
         return GitHubUser(
-            id=payload.get("sub", 0),
+            id=uid,
             login=payload.get("login", ""),
             name=payload.get("name"),
             avatar_url=payload.get("avatar_url"),

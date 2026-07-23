@@ -9,7 +9,7 @@
 > | 后端核心编排 `workflow.py` | ✅ 完成 | 5 阶段 StateGraph + 状态机 + WS 推送 |
 > | 5 阶段 Agent 节点 `nodes.py` | ✅ 完成 | 真实 LLM 调用（classify/retrieve/model/solve/verify+write） |
 > | 知识库 RAG（代码） | ✅ 就绪 | 混合检索 + Chroma + Tool 封装 + chain 均已实现 |
-> | 知识库（源数据） | 🟡 部分填充 | 10 张方法卡片 + 1 篇论文 + 2 个模板；**需扩充至 P0 标准** |
+> | 知识库（源数据） | ✅ P0 达标 | 20 张方法卡片 + 5 篇论文 + 3 个模板（2026-07-23 扩充） |
 > | WebSocket 进度推送 | ✅ 完成 | `ws.py` 订阅 Redis 转发；`task_end`/final_response 已推送 |
 > | 前端页面 / API | ✅ 完成 | Chat / Teach / Solution / Knowledge / APIKeys / Settings / Login |
 > | 认证 / 密钥管理 | ✅ 完成 | GitHub OAuth + `pages/apikeys` + `/api/apikeys`（支持多服务商） |
@@ -338,7 +338,7 @@ START → classify_problem → retrieve_knowledge → plan_execution
 2. ✅ 前端: pnpm 安装全部依赖，Vite 可启动
 3. ✅ shadcn-vue 初始化 + 精简 UI 组件（清理死代码后保留 22 个）
 4. ✅ 知识库 Schema (Pydantic) + Loader (YAML) + Embedder + Indexer + Retriever
-5. 🟡 首批知识内容: 10 张方法卡片 + 1 篇论文 + 2 个模板（**目标: 20 张卡片 + 5 篇论文 + 3 个模板**）
+5. ✅ 首批知识内容: 20 张方法卡片 + 5 篇论文 + 3 个模板（**P0 目标已达标**）
 6. ✅ ChromaDB 向量化管道（含增量索引）
 7. ✅ Docker Compose 文件 (backend + frontend + redis)
 8. ✅ 启动脚本 `start.bat` / `stop.bat`
@@ -377,11 +377,11 @@ START → classify_problem → retrieve_knowledge → plan_execution
 
 ### Phase 4 — 双模式完善 + 知识库扩充 (预计 3-4 天)
 
-**目标**: 教学模式深度可用，知识库达到 P0 标准
+**目标**: 教学模式深度可用，知识库已达到 P0 标准（✅ 2026-07-23）
 
 1. 教学模式 prompt 精细化（苏格拉底式追问策略）
 2. 前端模式切换体验打磨
-3. 知识库扩充至 **20 张方法卡片 + 5 篇论文 + 3 个模板**
+3. ✅ 知识库扩充至 **20 张方法卡片 + 5 篇论文 + 3 个模板**（已完成）
 4. Example 页面（3 道例题 + 配图）
 5. 索引构建与冒烟验证
 
@@ -414,9 +414,9 @@ START → classify_problem → retrieve_knowledge → plan_execution
 
 ## RAG 知识库子系统设计
 
-> 内存: KB-RAG-001 | 状态: 代码就绪、源数据部分填充（🟡 待扩充） | 更新时间: 2026-07-23
+> 内存: KB-RAG-001 | 状态: 代码就绪、源数据 P0 达标（✅ 20 卡片 + 5 论文 + 3 模板） | 更新时间: 2026-07-23
 
-> 🟡 **数据初始化状态（2026-07-23）**：`knowledge_base/` 已部分填充（10 张方法卡片 + 1 篇论文 + 2 个模板），但距离 P0 标准（20 张卡片 + 5 篇论文 + 3 个模板）仍有差距。`data/chroma_db/` 依赖运行索引构建。检索器已实现混合检索（语义+标签+MMR+关键词兜底），即使向量索引不可用也能通过关键词搜索返回基础结果。
+> ✅ **数据初始化状态（2026-07-23 更新）**：`knowledge_base/` 已达标 P0 标准（20 张方法卡片 + 5 篇论文 + 3 个模板）。方法卡片覆盖优化(8)、预测(3)、评价(5)、统计(2)、分类(1)、聚类(1)、图论(1)。论文覆盖国赛(3)、美赛(1)、华中赛(1)。`data/chroma_db/` 依赖运行索引构建。检索器已实现混合检索（语义+标签+MMR+关键词兜底）。
 
 ### 总体架构
 
@@ -706,7 +706,7 @@ analysis_agent → System Prompt 注入 KB 上下文 → 结构化分析输出
 | Step 4 | `chain.py` RAG Chain | 🟡 中 | 0.5d | Step 1 |
 | Step 5 | Prompt 模板 (RAG 上下文格式化) | 🟡 中 | 0.5d | Step 4 |
 | Step 2 | `reranker.py` LLM 重排序 | 🟡 中 | 0.5d | Step 1 |
-| Step 6 | 知识库数据扩充（20 卡片 + 5 论文 + 3 模板） | 🔴 高 | 2d | 无 |
+| Step 6 | 知识库数据扩充（20 卡片 + 5 论文 + 3 模板） | ✅ 完成 | 2026-07-23 | 无 |
 | Step 7 | 增量索引构建与冒烟验证 | 🔴 高 | 0.5d | Step 6 |
 
 **执行顺序**: Step 6 → Step 7 → Step 4 → Step 5 → Step 2

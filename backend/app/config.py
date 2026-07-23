@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     github_redirect_uri: str = "http://localhost:5173/auth/callback"
 
     # ---- JWT ----
-    jwt_secret: str = "change-me-in-production-use-a-random-secret"
+    jwt_secret: str = "set-in-env-file"
 
     # ---- Project Root ----
     @property

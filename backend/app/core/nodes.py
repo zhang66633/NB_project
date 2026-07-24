@@ -126,9 +126,12 @@ def retrieve_knowledge(state: AgentState) -> dict:
                 "name": card.name,
                 "principle": card.principle[:300],
                 "category": card.category,
+                "page_content": card.principle[:500],
             })
 
         for paper in loader.get_papers_by_type(problem_type):
+            # Build rich page_content for downstream agents
+            pc = f"{paper.title} [{paper.year} {paper.competition} {paper.problem_id}] {paper.model.approach[:200]}"
             papers.append({
                 "id": paper.id,
                 "title": paper.title,
@@ -136,6 +139,7 @@ def retrieve_knowledge(state: AgentState) -> dict:
                 "competition": paper.competition,
                 "problem_id": paper.problem_id,
                 "approach": paper.model.approach,
+                "page_content": pc[:500],
             })
 
         for tpl in loader.get_templates_for_type(problem_type):
@@ -143,9 +147,11 @@ def retrieve_knowledge(state: AgentState) -> dict:
                 "id": tpl.id,
                 "name": tpl.name,
                 "applicable_to": tpl.applicable_to,
+                "page_content": tpl.name,
             })
 
         for prob in loader.get_problems_by_type(problem_type):
+            pc = f"{prob.title} [{prob.year} {prob.competition} {prob.problem_id}] {prob.background[:300]}"
             problems.append({
                 "id": prob.id,
                 "title": prob.title,
@@ -154,34 +160,57 @@ def retrieve_knowledge(state: AgentState) -> dict:
                 "problem_id": prob.problem_id,
                 "background": prob.background[:300],
                 "objectives": prob.objectives,
+                "page_content": pc[:500],
             })
 
-    # 如果没有标签匹配，尝试语义搜索
-    if not methods:
-        try:
-            retriever = HybridRetriever(
-                kb_root=settings.kb_root,
-                persist_dir=settings.chroma_dir,
-            )
-            docs = retriever.invoke(state["problem_raw"], k=5)
-            for doc in docs:
-                meta = doc.metadata
-                if meta.get("type") == "method_card":
-                    methods.append({"id": meta.get("id"), "name": meta.get("name")})
-                elif meta.get("type") == "paper":
-                    papers.append({"id": meta.get("id"), "title": doc.page_content[:100]})
-                elif meta.get("type") == "template":
-                    templates.append({"id": meta.get("id"), "name": meta.get("name")})
-                elif meta.get("type") == "problem":
-                    problems.append({
-                        "id": meta.get("id"),
-                        "title": meta.get("title", ""),
-                        "year": meta.get("year"),
-                        "competition": meta.get("competition"),
-                        "problem_id": meta.get("problem_id"),
-                    })
-        except Exception:
-            pass  # 向量库未初始化时优雅降级
+    # 语义搜索 — 始终执行，与 tag 结果互补
+    tag_ids = {m.get("id") for m in methods} | {p.get("id") for p in papers} | {t.get("id") for t in templates} | {pr.get("id") for pr in problems}
+    try:
+        retriever = HybridRetriever(
+            kb_root=settings.kb_root,
+            persist_dir=settings.chroma_dir,
+        )
+        docs = retriever.invoke(state["problem_raw"], k=5)
+        for doc in docs:
+            meta = doc.metadata
+            doc_id = meta.get("id", "")
+            if doc_id in tag_ids:
+                continue  # 跳过 tag 已有结果
+            if meta.get("type") == "method_card":
+                methods.append({
+                    "id": meta.get("id"), "name": meta.get("name", ""),
+                    "principle": "", "category": [],
+                    "page_content": doc.page_content[:500],
+                })
+            elif meta.get("type") == "paper":
+                papers.append({
+                    "id": meta.get("id"),
+                    "title": meta.get("title", ""),
+                    "year": meta.get("year"),
+                    "competition": meta.get("competition"),
+                    "problem_id": meta.get("problem_id", ""),
+                    "approach": "",
+                    "page_content": doc.page_content[:500],
+                })
+            elif meta.get("type") == "template":
+                templates.append({
+                    "id": meta.get("id"), "name": meta.get("name", ""),
+                    "applicable_to": [],
+                    "page_content": doc.page_content[:500],
+                })
+            elif meta.get("type") == "problem":
+                problems.append({
+                    "id": meta.get("id"),
+                    "title": meta.get("title", ""),
+                    "year": meta.get("year"),
+                    "competition": meta.get("competition"),
+                    "problem_id": meta.get("problem_id", ""),
+                    "background": "",
+                    "objectives": [],
+                    "page_content": doc.page_content[:500],
+                })
+    except Exception:
+        pass  # 向量库未初始化时优雅降级
 
     _pub_event(task_id, "node_end", "retrieve_knowledge", {
         "methods_count": len(methods),

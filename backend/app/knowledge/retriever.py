@@ -1,7 +1,8 @@
-"""Hybrid retriever: tag filtering + ChromaDB semantic search + MMR rerank."""
+"""Hybrid retriever: multi-path recall (vector + BM25 + tag) → RRF fusion → MMR → LLM rerank → time decay."""
 
 from __future__ import annotations
 
+import re as _re
 from collections import defaultdict
 from pathlib import Path
 from typing import ClassVar, List, Optional, Sequence
@@ -10,6 +11,7 @@ import numpy as np
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
+from rank_bm25 import BM25Okapi
 
 from .embedder import KBEmbedder
 from .loader import KnowledgeBaseLoader
@@ -27,11 +29,15 @@ class HybridRetriever(BaseRetriever):
     """
 
     TAG_MATCH_SCORE: ClassVar[float] = 0.85  # fixed relevance score for tag-based matches
+    RRF_K: ClassVar[int] = 60  # RRF constant
 
     # BaseRetriever 是 pydantic 模型，字段必须先声明才能赋值
     embedder: KBEmbedder
     loader: KnowledgeBaseLoader
     _vector_store: Optional[object] = None
+    _bm25: Optional[BM25Okapi] = None
+    _bm25_docs: list[Document] = []
+    _bm25_tokens: list[list[str]] = []
 
     def __init__(
         self,
@@ -92,52 +98,135 @@ class HybridRetriever(BaseRetriever):
         run_manager: Optional[CallbackManagerForRetrieverRun] = None,
         **kwargs,
     ) -> List[Document]:
-        """Core retrieval: vector search → MMR → tag merge.
+        """Multi-path retrieval: (vector + BM25 + query variants) → RRF → MMR → LLM rerank → time decay.
 
         Keyword Args:
-            problem_type:       Tag filter (optimization / prediction / evaluation / ...).
+            problem_type:       Tag filter (optimization / prediction / ...).
             metadata_filter:    ChromaDB where-clause dict, e.g. {"type": "paper"}.
             k:                  Final result count (default 5).
-            fetch_k:            Candidates fetched before MMR (default 20, must be >= k).
+            fetch_k:            Candidates per path (default k*4, max 20).
             use_mmr:            Enable MMR diversification (default True).
-            mmr_lambda:         Relevance-vs-diversity trade-off (0-1, default 0.5).
+            mmr_lambda:         Relevance-vs-diversity trade-off (default 0.5).
+            use_reranker:       Enable LLM precision rerank (default True).
+            use_query_expansion: Enable query rewriting + HyDE (default True).
         """
         k = kwargs.get("k", 5)
         fetch_k = kwargs.get("fetch_k", max(k * 4, 20))
         use_mmr = kwargs.get("use_mmr", True)
         mmr_lambda = kwargs.get("mmr_lambda", 0.5)
+        use_reranker = kwargs.get("use_reranker", True)
+        use_query_expansion = kwargs.get("use_query_expansion", True)
         problem_type = kwargs.get("problem_type")
         metadata_filter = kwargs.get("metadata_filter")
 
-        # 1. Vector search (fetch more than needed for MMR pool)
-        scored: List[tuple[Document, float]] = []
-        try:
-            scored = self.similarity_search_with_score(
-                query, k=max(fetch_k, k), metadata_filter=metadata_filter
-            )
-        except Exception:
-            # ChromaDB may not be built yet — fall back to tag-only
-            pass
+        # ── 0. Query expansion: generate variants for multi-angle retrieval ──
+        queries = [query]
+        if use_query_expansion:
+            try:
+                from .query_expander import QueryExpander
+                from ..core.llm.factory import get_llm
+                expander = QueryExpander(get_llm("analysis"))
+                variants = expander.expand(query)
+                if variants:
+                    queries = [query] + [v for v in variants if v != query][:2]
+                # HyDE: generate hypothetical answer for better embedding match
+                hyde_text = expander.hyde(query)
+                if hyde_text and hyde_text != query:
+                    queries.append(hyde_text)
+            except Exception:
+                pass  # gracefully degrade to single query
 
-        # 2. MMR rerank
-        if use_mmr and len(scored) > k:
-            docs = self._mmr_rerank(
-                query, scored, k=k, lam=mmr_lambda
+        # ── 1. Multi-path recall per query ────────────────────────────────
+        # Each query runs: vector search + BM25 search
+        # Results from all queries merged via RRF
+        all_vector_ranked: list[list[Document]] = []
+        all_bm25_ranked: list[list[Document]] = []
+
+        for q in queries[:3]:  # cap at 3 queries to limit latency
+            # 1a. Vector search
+            try:
+                scored = self.similarity_search_with_score(
+                    q, k=max(fetch_k, k), metadata_filter=metadata_filter
+                )
+                vec_docs = []
+                for doc, distance in scored:
+                    doc.metadata["score"] = self._normalize_chroma_score(distance)
+                    vec_docs.append(doc)
+                if vec_docs:
+                    all_vector_ranked.append(vec_docs)
+            except Exception:
+                pass
+
+            # 1b. BM25 keyword search
+            try:
+                bm25_docs = self._bm25_search(q, k=fetch_k)
+                if bm25_docs:
+                    all_bm25_ranked.append(bm25_docs)
+            except Exception:
+                pass
+
+        # 1c. Tag-based exact match (deterministic, high-confidence)
+        tag_docs = self._filter_by_tags(problem_type, k * 2)
+
+        # ── 2. RRF fusion: merge all ranked lists ─────────────────────────
+        # Separate vector and BM25 paths, then merge with tag results
+        fused_docs: list[Document] = []
+        seen: set[str] = set()
+
+        # Vector + BM25 via RRF
+        if all_vector_ranked or all_bm25_ranked:
+            fused_docs = self._rrf_fusion(
+                all_vector_ranked + all_bm25_ranked,
+                k=fetch_k,
             )
+            for d in fused_docs:
+                did = d.metadata.get("id", "")
+                if did:
+                    seen.add(did)
+
+        # Tag results: prepend (highest confidence), deduplicate
+        final_docs: list[Document] = []
+        for doc in tag_docs:
+            did = doc.metadata.get("id", "")
+            if did not in seen:
+                seen.add(did)
+                final_docs.append(doc)
+
+        # Fill remaining slots from fused results
+        for doc in fused_docs:
+            if len(final_docs) >= k * 2:
+                break
+            did = doc.metadata.get("id", "")
+            if did not in seen:
+                seen.add(did)
+                final_docs.append(doc)
+
+        # Fallback: keyword search if nothing found
+        if not final_docs:
+            final_docs = self._keyword_search(query, k)
+
+        # ── 3. MMR diversity rerank ───────────────────────────────────────
+        if use_mmr and len(final_docs) > k:
+            # Convert to (doc, score) format for MMR
+            scored_for_mmr = [(d, 1.0 - d.metadata.get("score", 0.5)) for d in final_docs]
+            docs = self._mmr_rerank(query, scored_for_mmr, k=k, lam=mmr_lambda)
         else:
-            docs = [doc for doc, _ in scored[:k]]
-            for doc, score in scored[:k]:
-                doc.metadata["score"] = self._normalize_chroma_score(score)
+            docs = final_docs[:k]
 
-        # 2.5 向量索引不可用或无结果时的关键词兜底（YAML 全量子串匹配）
-        if not docs:
-            docs = self._keyword_search(query, k)
+        # ── 4. LLM precision rerank ───────────────────────────────────────
+        if use_reranker and len(docs) > 1:
+            try:
+                from .reranker import create_reranker
+                from ..core.llm.factory import get_llm
+                reranker = create_reranker(llm=get_llm("analysis"), batch_size=10)
+                docs = reranker.rerank(query, docs, top_k=k)
+            except Exception:
+                pass  # graceful degradation
 
-        # 3. Tag-based complementary results (for cold-start / edge cases)
-        tag_docs = self._filter_by_tags(problem_type, k)
+        # ── 5. Time decay: newer papers rank higher ───────────────────────
+        docs = self._apply_time_decay(docs)
 
-        # 4. Merge: tag first (deterministic), then vector (deduplicated by id)
-        return self._merge_results(tag_docs, docs, k)
+        return docs[:k]
 
     # ── MMR ────────────────────────────────────────────────────────────
 
@@ -324,6 +413,145 @@ class HybridRetriever(BaseRetriever):
             doc.metadata["score"] = min(0.5 + 0.3 * s, 0.9)
             out.append(doc)
         return out
+
+    # ── BM25 keyword search ──────────────────────────────────────────────
+
+    def _tokenize(self, text: str) -> list[str]:
+        """Simple Chinese-friendly tokenizer (character bigrams + words)."""
+        tokens = []
+        # Split on whitespace for pre-segmented text
+        words = text.lower().split()
+        tokens.extend(words)
+        # For Chinese text without spaces: use character bigrams
+        for word in words:
+            if len(word) > 2 and all('一' <= c <= '鿿' for c in word):
+                for i in range(len(word) - 1):
+                    tokens.append(word[i:i+2])
+        if not tokens:
+            tokens = [text.lower()[:100]]
+        return tokens
+
+    def _ensure_bm25(self) -> None:
+        """Lazy-build BM25 index from all knowledge base documents."""
+        if self._bm25 is not None:
+            return
+        self._bm25_docs = []
+        all_tokens: list[list[str]] = []
+
+        for card in self.loader.load_all_methods():
+            doc = self._card_to_document(card)
+            self._bm25_docs.append(doc)
+            all_tokens.append(self._tokenize(doc.page_content))
+
+        for paper in self.loader.load_all_papers():
+            doc = self._paper_to_document(paper)
+            self._bm25_docs.append(doc)
+            all_tokens.append(self._tokenize(doc.page_content))
+
+        for tpl in self.loader.load_all_templates():
+            doc = self._template_to_document(tpl)
+            self._bm25_docs.append(doc)
+            all_tokens.append(self._tokenize(doc.page_content))
+
+        for prob in self.loader.load_all_problems():
+            doc = self._problem_to_document(prob)
+            self._bm25_docs.append(doc)
+            all_tokens.append(self._tokenize(doc.page_content))
+
+        if all_tokens:
+            self._bm25 = BM25Okapi(all_tokens)
+            self._bm25_tokens = all_tokens
+
+    def _bm25_search(self, query: str, k: int) -> list[Document]:
+        """BM25 keyword search, returns ranked documents with normalized scores."""
+        self._ensure_bm25()
+        if not self._bm25 or not self._bm25_docs:
+            return []
+
+        query_tokens = self._tokenize(query)
+        if not query_tokens:
+            return []
+
+        scores = self._bm25.get_scores(query_tokens)
+        if scores is None or len(scores) == 0:
+            return []
+
+        # Get top-k indices
+        top_indices = np.argsort(scores)[::-1][:k]
+
+        result: list[Document] = []
+        max_score = float(scores[top_indices[0]]) if len(top_indices) > 0 else 1.0
+        for idx in top_indices:
+            if scores[idx] <= 0:
+                continue
+            doc = self._bm25_docs[idx]
+            # Copy metadata to avoid mutating original
+            doc.metadata = {**doc.metadata}
+            doc.metadata["score"] = round(float(scores[idx]) / max(max_score, 1e-8), 4)
+            result.append(doc)
+
+        return result
+
+    # ── RRF fusion ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _rrf_fusion(ranked_lists: list[list[Document]], k: int = 60) -> list[Document]:
+        """Reciprocal Rank Fusion: merge multiple ranked lists.
+
+        score(d) = sum(1 / (k + rank_i(d)))  for each list where d appears.
+        Args:
+            ranked_lists: Each list is already ranked (best first).
+            k: RRF constant (default 60).
+        Returns:
+            Documents sorted by RRF score descending.
+        """
+        if not ranked_lists:
+            return []
+
+        rrf_scores: dict[str, tuple[float, Document]] = {}
+
+        for doc_list in ranked_lists:
+            for rank, doc in enumerate(doc_list):
+                doc_id = doc.metadata.get("id", doc.page_content[:50])
+                rrf = 1.0 / (k + rank + 1)
+                if doc_id in rrf_scores:
+                    prev_score, _ = rrf_scores[doc_id]
+                    rrf_scores[doc_id] = (prev_score + rrf, doc)
+                else:
+                    rrf_scores[doc_id] = (rrf, doc)
+
+        # Sort by RRF score descending
+        sorted_items = sorted(rrf_scores.values(), key=lambda x: x[0], reverse=True)
+        result = []
+        for rrf_score, doc in sorted_items:
+            doc.metadata["score"] = round(rrf_score, 6)
+            result.append(doc)
+
+        return result
+
+    # ── time decay ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _apply_time_decay(docs: list[Document], decay: float = 0.95) -> list[Document]:
+        """Apply time-based score decay for papers and problems.
+
+        Newer documents get a boost: score *= decay^(current_year - doc_year).
+        Only applies to documents with a 'year' in metadata.
+        """
+        from datetime import datetime
+        current_year = datetime.now().year
+
+        for doc in docs:
+            year = doc.metadata.get("year")
+            doc_type = doc.metadata.get("type", "")
+            if year and doc_type in ("paper", "problem"):
+                age = max(0, current_year - int(year))
+                current_score = doc.metadata.get("score", 1.0)
+                doc.metadata["score"] = current_score * (decay ** age)
+
+        # Re-sort by adjusted score
+        docs.sort(key=lambda d: d.metadata.get("score", 0.0), reverse=True)
+        return docs
 
     # ── document builders (rich page_content for tag results) ──────────
 

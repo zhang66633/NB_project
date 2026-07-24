@@ -147,6 +147,36 @@ async def _event_stream(req: ChatRequest, api_key_config: dict | None = None):
 
         messages = _to_lc_messages(req)
 
+        # ── RAG 预检索：如果用户开启了 use_rag，先查知识库并注入上下文 ──
+        if req.use_rag:
+            try:
+                from ..knowledge.retriever import HybridRetriever
+                from ..knowledge.chain import format_docs
+                from ..config import get_settings
+
+                settings = get_settings()
+                retriever = HybridRetriever(
+                    kb_root=settings.kb_root,
+                    persist_dir=settings.chroma_dir,
+                )
+                last_user = next(
+                    (m for m in reversed(messages) if isinstance(m, HumanMessage)),
+                    None,
+                )
+                if last_user:
+                    query = str(last_user.content)
+                    docs = retriever.invoke(query, k=5)
+                    if docs:
+                        ctx = format_docs(docs)
+                        messages.insert(
+                            1,  # After system prompt, before history
+                            SystemMessage(
+                                content=f"## 知识库参考资料（预检索）\n以下是从知识库中检索到的相关数学建模方法、论文和竞赛真题。请优先参考这些内容回答问题，必要时再调用搜索工具进行补充查询。\n\n{ctx}"
+                            ),
+                        )
+            except Exception:
+                pass  # RAG 预检索失败不阻塞对话
+
         # 循环：每轮 LLM 输出可能含文本 + tool_calls；若有 tool_calls 则执行后回灌
         for _ in range(MAX_TOOL_ITERATIONS):
             text_buf: list[str] = []

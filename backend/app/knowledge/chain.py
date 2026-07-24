@@ -77,28 +77,28 @@ def format_kb_context(
 
     if kb_problems:
         problems_text = "\n".join(
-            f"- **{p.get('title', '?')}** [{p.get('id', '?')}] ({p.get('year', '?')} {p.get('competition', '?')} {p.get('problem_id', '?')}): {p.get('page_content', '')[:200]}"
+            f"- **{p.get('title', '?')}** [{p.get('id', '?')}] ({p.get('year', '?')} {p.get('competition', '?')} {p.get('problem_id', '?')}): {p.get('page_content', '') or p.get('background', '')[:200]}"
             for p in kb_problems
         )
         sections.append(f"## 相关竞赛真题\n{problems_text}")
 
     if kb_methods:
         methods_text = "\n".join(
-            f"- **{m.get('name', '?')}** [{m.get('id', '?')}]: {m.get('page_content', '')[:200]}"
+            f"- **{m.get('name', '?')}** [{m.get('id', '?')}]: {m.get('page_content', '') or m.get('principle', '')[:200]}"
             for m in kb_methods
         )
         sections.append(f"## 推荐方法\n{methods_text}")
 
     if kb_papers:
         papers_text = "\n".join(
-            f"- **{p.get('title', '?')}** [{p.get('id', '?')}] ({p.get('year', '?')} {p.get('competition', '?')}): {p.get('page_content', '')[:200]}"
+            f"- **{p.get('title', '?')}** [{p.get('id', '?')}] ({p.get('year', '?')} {p.get('competition', '?')}): {p.get('page_content', '') or p.get('approach', '')[:200]}"
             for p in kb_papers
         )
         sections.append(f"## 相似真题论文\n{papers_text}")
 
     if kb_templates:
         templates_text = "\n".join(
-            f"- **{t.get('name', '?')}** [{t.get('id', '?')}]: {t.get('page_content', '')[:200]}"
+            f"- **{t.get('name', '?')}** [{t.get('id', '?')}]: {t.get('page_content', '') or t.get('name', '')[:200]}"
             for t in kb_templates
         )
         sections.append(f"## 分析框架\n{templates_text}")
